@@ -38,6 +38,7 @@ import {
   endpointHostLabel,
   normalizeImageApiBaseUrl,
 } from "../lib/image-endpoint";
+import { isDesktopRuntime } from "../lib/runtime";
 import type { GenerationSettings, ImageQuality, ImageSize } from "../types";
 import { colors, motion, radii } from "../styles/tokens.stylex";
 import { useAppearance, type AppearanceMode } from "../theme/AppearanceProvider";
@@ -50,8 +51,8 @@ interface SettingsDrawerProps {
   storageAvailable: boolean;
   historyClearing: boolean;
   onClose: () => void;
-  onSave: (settings: GenerationSettings) => void;
-  onReset: () => void;
+  onSave: (settings: GenerationSettings) => void | Promise<void>;
+  onReset: () => void | Promise<void>;
   onClearHistory: () => void | Promise<void>;
 }
 
@@ -71,6 +72,8 @@ export default function SettingsDrawer({
   const [draft, setDraft] = useState(settings);
   const [endpointError, setEndpointError] = useState<string>();
   const [formError, setFormError] = useState<string>();
+  const [saving, setSaving] = useState(false);
+  const desktop = isDesktopRuntime();
   const requestEndpoint = previewGenerationEndpoint(draft.baseUrl);
   const requestHost = endpointHostLabel(draft.baseUrl, "");
 
@@ -89,7 +92,7 @@ export default function SettingsDrawer({
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     let normalizedBaseUrl: string;
 
     try {
@@ -115,11 +118,16 @@ export default function SettingsDrawer({
 
     setEndpointError(undefined);
     setFormError(undefined);
-    onSave(trimmed);
+    setSaving(true);
+    try {
+      await onSave(trimmed);
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleReset = () => {
-    onReset();
+  const handleReset = async () => {
+    await onReset();
     setEndpointError(undefined);
     setFormError(undefined);
   };
@@ -144,8 +152,9 @@ export default function SettingsDrawer({
           <Button
             type="primary"
             icon={<Save size={16} />}
+            loading={saving}
             className={stylex.props(styles.footerButton).className}
-            onClick={handleSave}
+            onClick={() => void handleSave()}
           >
             保存设置
           </Button>
@@ -159,7 +168,7 @@ export default function SettingsDrawer({
               外观
             </Typography.Title>
             <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-              当前显示为{resolvedMode === "dark" ? "深色" : "浅色"}，选择会保存在此浏览器中。
+              当前显示为{resolvedMode === "dark" ? "深色" : "浅色"}，选择会保存在当前设备中。
             </Typography.Paragraph>
           </div>
           <Segmented<AppearanceMode>
@@ -182,11 +191,12 @@ export default function SettingsDrawer({
           <section {...stylex.props(styles.section)} aria-labelledby="connection-heading">
             <div {...stylex.props(styles.sectionHeading)}>
               <Typography.Title id="connection-heading" level={5}>
-                API 直连
+                {desktop ? "设备直连" : "API 直连"}
               </Typography.Title>
               <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-                本站是纯静态页面，图片请求会由此浏览器直接发送到你填写的兼容 OpenAI
-                Endpoint。
+                {desktop
+                  ? "图片请求由桌面应用直接发送到你填写的兼容 Endpoint，不经过 SceneMeld 或 Cloudflare，且不受浏览器 CORS 限制。"
+                  : "SceneMeld Web 是纯静态页面，图片请求会由此浏览器直接发送到你填写的兼容 Endpoint。"}
               </Typography.Paragraph>
             </div>
 
@@ -194,7 +204,10 @@ export default function SettingsDrawer({
               label="API 基础地址"
               required
               validateStatus={endpointError ? "error" : undefined}
-              help={endpointError || "公开页面仅支持 HTTPS，地址通常以 /v1 结尾。"}
+              help={
+                endpointError ||
+                `${desktop ? "桌面正式构建" : "Web 版"}仅支持 HTTPS，地址通常以 /v1 结尾。`
+              }
             >
               <Input
                 value={draft.baseUrl}
@@ -208,7 +221,7 @@ export default function SettingsDrawer({
             <div {...stylex.props(styles.endpointPreview)} aria-live="polite">
               <span>{requestHost ? `API Key 将发送至 ${requestHost}` : "实际请求"}</span>
               <code>{requestEndpoint ? `POST ${requestEndpoint}` : "填写有效地址后显示"}</code>
-              {requestHost ? <small>本站与 Cloudflare 不接收或中转生成请求。</small> : null}
+              {requestHost ? <small>SceneMeld 与 Cloudflare 不接收或中转生成请求。</small> : null}
             </div>
 
             <Form.Item
@@ -216,8 +229,8 @@ export default function SettingsDrawer({
               required
               help={
                 requestHost
-                  ? `仅随生成请求直接发送到 ${requestHost}，不会发送给本站。`
-                  : "仅随生成请求直接发送到目标 Endpoint，不会发送给本站。"
+                  ? `仅随生成请求直接发送到 ${requestHost}，不会发送给 SceneMeld 或 Cloudflare。`
+                  : "仅随生成请求直接发送到目标 Endpoint，不会发送给 SceneMeld 或 Cloudflare。"
               }
             >
               <Input.Password
@@ -230,11 +243,15 @@ export default function SettingsDrawer({
 
             <label {...stylex.props(styles.switchRow)}>
               <span>
-                <strong>保存 API Key 到此浏览器</strong>
+                <strong>{desktop ? "保存 API Key 到系统凭据管理器" : "保存 API Key 到此浏览器"}</strong>
                 <small>
                   {draft.rememberApiKey
-                    ? "刷新页面后仍会保留。"
-                    : "关闭时仅保留到页面刷新前。"}
+                    ? desktop
+                      ? "重新打开应用后仍会保留。"
+                      : "刷新页面后仍会保留。"
+                    : desktop
+                      ? "仅保留到本次应用会话结束。"
+                      : "仅保留到页面刷新前。"}
                 </small>
               </span>
               <Switch
@@ -247,9 +264,13 @@ export default function SettingsDrawer({
               <Alert
                 showIcon
                 icon={<ShieldAlert size={18} />}
-                type="warning"
-                message="仅在受信任设备上保存密钥"
-                description="API Key 会写入此浏览器的 localStorage，同源脚本和浏览器扩展可能读取它。"
+                type={desktop ? "info" : "warning"}
+                message={desktop ? "由操作系统保管密钥" : "仅在受信任设备上保存密钥"}
+                description={
+                  desktop
+                    ? "API Key 会写入操作系统凭据管理器，不会写入 localStorage。"
+                    : "API Key 会写入此浏览器的 localStorage，同源脚本和浏览器扩展可能读取它。"
+                }
               />
             ) : null}
           </section>
@@ -345,7 +366,7 @@ export default function SettingsDrawer({
               </Tag>
             </div>
             <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-              会话、消息和生成图片保存在此浏览器的 IndexedDB 中，不是永久备份。
+              会话、消息和生成图片保存在当前设备的 IndexedDB 中，不是永久备份。
             </Typography.Paragraph>
           </div>
 

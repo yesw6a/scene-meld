@@ -1,7 +1,7 @@
 {
-  "name": "gpt-image-2-studio",
+  "name": "scenemeld",
   "version": "1.0.0",
-  "description": "A static, browser-direct conversational image studio for OpenAI-compatible image endpoints.",
+  "description": "A local-first conversational image workspace for user-configured compatible endpoints.",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -14,11 +14,16 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build",
+    "desktop:check": "cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@ant-design/x": "^2.9.0",
     "@stylexjs/stylex": "^0.19.0",
+    "@tauri-apps/api": "^2.11.1",
     "antd": "^6.5.4",
     "idb": "^8.0.3",
     "lucide-react": "^1.29.0",
@@ -28,6 +33,7 @@
   "devDependencies": {
     "@stylexjs/babel-plugin": "^0.19.0",
     "@stylexjs/rollup-plugin": "^0.19.0",
+    "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^26.1.2",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",

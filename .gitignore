@@ -5,6 +5,7 @@
 .wrangler/
 node_modules/
 dist/
+src-tauri/target/
 output/
 tmp/
 *.log

@@ -1,7 +1,9 @@
-import type { GenerationSettings, ImageQuality, ImageSize } from "../types";
+import type { GenerationSettings, ImageQuality } from "../types";
 import { migrateImageSize } from "./image-sizes";
+import { isDesktopRuntime } from "./runtime";
 
-const STORAGE_KEY = "gpt-image-2-studio.settings.v1";
+const STORAGE_KEY = "scenemeld.settings.v1";
+const LEGACY_STORAGE_KEY = "gpt-image-2-studio.settings.v1";
 const VALID_QUALITIES = new Set<ImageQuality>(["low", "medium", "high"]);
 
 export const DEFAULT_SETTINGS: GenerationSettings = {
@@ -24,45 +26,147 @@ interface StoredSettings {
 }
 
 let cachedSettings: GenerationSettings | null = null;
+let pendingLegacyDesktopApiKey: string | null = null;
 
 export function loadSettings(): GenerationSettings {
   if (cachedSettings) {
     return cachedSettings;
   }
-
   if (typeof window === "undefined") {
     return DEFAULT_SETTINGS;
   }
 
   try {
-    const rawValue = window.localStorage.getItem(STORAGE_KEY);
+    const currentValue = window.localStorage.getItem(STORAGE_KEY);
+    const legacyValue = currentValue
+      ? null
+      : window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    const rawValue = currentValue ?? legacyValue;
     if (!rawValue) {
-      cachedSettings = DEFAULT_SETTINGS;
+      cachedSettings = { ...DEFAULT_SETTINGS };
       return cachedSettings;
     }
 
     const stored = JSON.parse(rawValue) as Partial<StoredSettings>;
-    cachedSettings = {
-      baseUrl: typeof stored.baseUrl === "string" ? stored.baseUrl : "",
-      apiKey:
-        stored.rememberApiKey && typeof stored.apiKey === "string" ? stored.apiKey : "",
-      model: typeof stored.model === "string" && stored.model ? stored.model : "gpt-image-2",
-      size: migrateImageSize(stored.size),
-      quality: VALID_QUALITIES.has(stored.quality as ImageQuality)
-        ? (stored.quality as ImageQuality)
-        : "medium",
-      rememberApiKey: stored.rememberApiKey === true,
-    };
+    const desktop = isDesktopRuntime();
+    const legacyApiKey =
+      legacyValue &&
+      desktop &&
+      stored.rememberApiKey === true &&
+      typeof stored.apiKey === "string"
+        ? stored.apiKey
+        : "";
+    pendingLegacyDesktopApiKey = legacyApiKey || null;
+    cachedSettings = deserializeSettings(stored, desktop);
+
+    if (!pendingLegacyDesktopApiKey) {
+      try {
+        persistLocalPreferences(cachedSettings);
+        if (legacyValue) {
+          window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+        }
+      } catch {
+        // 读取到的设置仍可用于当前会话，迁移留到下次存储可用时重试。
+      }
+    }
     return cachedSettings;
   } catch {
-    cachedSettings = DEFAULT_SETTINGS;
+    cachedSettings = { ...DEFAULT_SETTINGS };
     return cachedSettings;
   }
 }
 
-export function saveSettings(settings: GenerationSettings): void {
-  cachedSettings = settings;
+export async function hydrateSettingsApiKey(
+  settings: GenerationSettings,
+): Promise<GenerationSettings> {
+  if (!isDesktopRuntime()) {
+    return settings;
+  }
 
+  const { loadDesktopApiKey, saveDesktopApiKey } = await import("./desktop-secrets");
+  const storedApiKey = await loadDesktopApiKey();
+  if (storedApiKey) {
+    const hydrated = { ...settings, apiKey: storedApiKey, rememberApiKey: true };
+    cachedSettings = hydrated;
+    persistLocalPreferences(hydrated);
+    removeLegacySettings();
+    pendingLegacyDesktopApiKey = null;
+    return hydrated;
+  }
+
+  if (pendingLegacyDesktopApiKey) {
+    const migratedApiKey = pendingLegacyDesktopApiKey;
+    await saveDesktopApiKey(migratedApiKey);
+    const hydrated = { ...settings, apiKey: migratedApiKey, rememberApiKey: true };
+    cachedSettings = hydrated;
+    persistLocalPreferences(hydrated);
+    removeLegacySettings();
+    pendingLegacyDesktopApiKey = null;
+    return hydrated;
+  }
+
+  cachedSettings = { ...settings, apiKey: "" };
+  persistLocalPreferences(cachedSettings);
+  removeLegacySettings();
+  return cachedSettings;
+}
+
+export async function saveSettings(settings: GenerationSettings): Promise<void> {
+  if (isDesktopRuntime()) {
+    const { deleteDesktopApiKey, saveDesktopApiKey } = await import("./desktop-secrets");
+    if (settings.rememberApiKey && settings.apiKey) {
+      await saveDesktopApiKey(settings.apiKey);
+    } else {
+      await deleteDesktopApiKey();
+    }
+  }
+
+  cachedSettings = settings;
+  persistLocalPreferences(settings);
+  removeLegacySettings();
+  pendingLegacyDesktopApiKey = null;
+}
+
+export function saveSettingsPreferences(settings: GenerationSettings): void {
+  cachedSettings = settings;
+  persistLocalPreferences(settings);
+}
+
+export async function clearStoredSettings(): Promise<GenerationSettings> {
+  if (isDesktopRuntime()) {
+    const { deleteDesktopApiKey } = await import("./desktop-secrets");
+    await deleteDesktopApiKey();
+  }
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
+  }
+
+  pendingLegacyDesktopApiKey = null;
+  cachedSettings = { ...DEFAULT_SETTINGS };
+  return cachedSettings;
+}
+
+function deserializeSettings(
+  stored: Partial<StoredSettings>,
+  desktop: boolean,
+): GenerationSettings {
+  return {
+    baseUrl: typeof stored.baseUrl === "string" ? stored.baseUrl : "",
+    apiKey:
+      !desktop && stored.rememberApiKey && typeof stored.apiKey === "string"
+        ? stored.apiKey
+        : "",
+    model: typeof stored.model === "string" && stored.model ? stored.model : "gpt-image-2",
+    size: migrateImageSize(stored.size),
+    quality: VALID_QUALITIES.has(stored.quality as ImageQuality)
+      ? (stored.quality as ImageQuality)
+      : "medium",
+    rememberApiKey: stored.rememberApiKey === true,
+  };
+}
+
+function persistLocalPreferences(settings: GenerationSettings): void {
   if (typeof window === "undefined") {
     return;
   }
@@ -74,17 +178,15 @@ export function saveSettings(settings: GenerationSettings): void {
     size: settings.size,
     quality: settings.quality,
     rememberApiKey: settings.rememberApiKey,
-    ...(settings.rememberApiKey && settings.apiKey ? { apiKey: settings.apiKey } : {}),
+    ...(!isDesktopRuntime() && settings.rememberApiKey && settings.apiKey
+      ? { apiKey: settings.apiKey }
+      : {}),
   };
-
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
 }
 
-export function clearStoredSettings(): GenerationSettings {
+function removeLegacySettings(): void {
   if (typeof window !== "undefined") {
-    window.localStorage.removeItem(STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   }
-
-  cachedSettings = { ...DEFAULT_SETTINGS };
-  return cachedSettings;
 }

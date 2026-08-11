@@ -3,6 +3,7 @@ import type {
   GenerationRequestSettings,
   ImageAttachmentSource,
 } from "../types";
+import type { ImageTransport } from "./image-transport";
 import {
   buildImageApiEndpoint,
   endpointHostLabel,
@@ -39,7 +40,45 @@ export class StudioApiError extends Error {
   }
 }
 
+export class BrowserImageTransport implements ImageTransport {
+  generate(
+    settings: GenerationRequestSettings,
+    prompt: string,
+    signal: AbortSignal,
+  ): Promise<GenerateImageResponse> {
+    return requestGeneratedImageInBrowser(settings, prompt, signal);
+  }
+
+  edit(
+    settings: GenerationRequestSettings,
+    prompt: string,
+    attachments: ImageAttachmentSource[],
+    signal: AbortSignal,
+  ): Promise<GenerateImageResponse> {
+    return requestEditedImageInBrowser(settings, prompt, attachments, signal);
+  }
+}
+
+let transportPromise: Promise<ImageTransport> | null = null;
+
 export async function requestGeneratedImage(
+  settings: GenerationRequestSettings,
+  prompt: string,
+  signal: AbortSignal,
+): Promise<GenerateImageResponse> {
+  return (await getImageTransport()).generate(settings, prompt, signal);
+}
+
+export async function requestEditedImage(
+  settings: GenerationRequestSettings,
+  prompt: string,
+  attachments: ImageAttachmentSource[],
+  signal: AbortSignal,
+): Promise<GenerateImageResponse> {
+  return (await getImageTransport()).edit(settings, prompt, attachments, signal);
+}
+
+async function requestGeneratedImageInBrowser(
   settings: GenerationRequestSettings,
   prompt: string,
   signal: AbortSignal,
@@ -66,7 +105,7 @@ export async function requestGeneratedImage(
   return parseImageResponse(response, endpoint, settings.apiKey, signal, "图片生成");
 }
 
-export async function requestEditedImage(
+async function requestEditedImageInBrowser(
   settings: GenerationRequestSettings,
   prompt: string,
   attachments: ImageAttachmentSource[],
@@ -117,11 +156,22 @@ async function fetchDirectImageApi(
     }
 
     throw new StudioApiError(
-      `浏览器无法直接连接 ${endpointHostLabel(endpoint, "目标 API")}。请检查网络、HTTPS、CORS 预检和重定向设置；本站不提供中转服务。`,
+      `浏览器无法直接连接 ${endpointHostLabel(endpoint, "目标 API")}。请检查网络、HTTPS、CORS 预检和重定向设置；SceneMeld Web 不提供中转服务，未开放浏览器 CORS 的端点可改用 SceneMeld Desktop。`,
       undefined,
       "NETWORK_OR_CORS_ERROR",
     );
   }
+}
+
+async function getImageTransport(): Promise<ImageTransport> {
+  if (!transportPromise) {
+    transportPromise = "__TAURI_INTERNALS__" in window
+      ? import("./desktop-image-transport").then(
+          ({ DesktopImageTransport }) => new DesktopImageTransport(),
+        )
+      : Promise.resolve(new BrowserImageTransport());
+  }
+  return transportPromise;
 }
 
 async function parseImageResponse(

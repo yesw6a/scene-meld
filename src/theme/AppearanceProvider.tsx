@@ -26,7 +26,8 @@ interface AppearanceContextValue {
   setMode: (mode: AppearanceMode) => void;
 }
 
-const STORAGE_KEY = "gpt-image-2-studio.appearance.v1";
+const STORAGE_KEY = "scenemeld.appearance.v1";
+const LEGACY_STORAGE_KEY = "gpt-image-2-studio.appearance.v1";
 const AppearanceContext = createContext<AppearanceContextValue | null>(null);
 const DARK_THEME_CLASS_NAMES =
   stylex.props(darkColorsTheme, darkShadowsTheme).className?.split(" ").filter(Boolean) ?? [];
@@ -120,13 +121,22 @@ function loadAppearanceMode(): AppearanceMode {
   }
 
   try {
-    const rawValue = window.localStorage.getItem(STORAGE_KEY);
+    const currentValue = window.localStorage.getItem(STORAGE_KEY);
+    const legacyValue = currentValue
+      ? null
+      : window.localStorage.getItem(LEGACY_STORAGE_KEY);
+    const rawValue = currentValue ?? legacyValue;
     if (!rawValue) {
       return "system";
     }
 
     const stored = JSON.parse(rawValue) as { version?: number; mode?: unknown };
-    return stored.version === 1 && isAppearanceMode(stored.mode) ? stored.mode : "system";
+    const mode =
+      stored.version === 1 && isAppearanceMode(stored.mode) ? stored.mode : "system";
+    if (legacyValue) {
+      saveAppearanceMode(mode);
+    }
+    return mode;
   } catch {
     return "system";
   }
@@ -135,6 +145,7 @@ function loadAppearanceMode(): AppearanceMode {
 function saveAppearanceMode(mode: AppearanceMode): void {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ version: 1, mode }));
+    window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   } catch {
     // 外观切换仍可在当前页面使用，本地偏好保存失败不阻断创作。
   }
@@ -198,8 +209,8 @@ function createThemeConfig(mode: ResolvedAppearanceMode): ThemeConfig {
       },
       Input: {
         activeShadow: darkMode
-          ? "0 0 0 3px rgba(82, 168, 255, 0.24)"
-          : "0 0 0 3px rgba(0, 103, 217, 0.20)",
+          ? "0 0 0 3px rgba(94, 234, 212, 0.24)"
+          : "0 0 0 3px rgba(15, 118, 110, 0.20)",
       },
     },
   };

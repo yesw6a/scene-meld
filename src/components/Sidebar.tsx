@@ -1,7 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { Popconfirm, Tooltip } from "antd";
 import {
-  Image,
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
@@ -9,6 +8,7 @@ import {
   Trash2,
 } from "lucide-react";
 
+import BrandMark from "./BrandMark";
 import type { Conversation } from "../types";
 import { colors, materials, motion, radii, shadows } from "../styles/tokens.stylex";
 
@@ -55,12 +55,12 @@ export default function Sidebar({
       <div {...stylex.props(styles.brand, navigationCollapsed && styles.brandCollapsed)}>
         <div {...stylex.props(styles.brandIdentity)}>
           <span {...stylex.props(styles.brandMark)} aria-hidden="true">
-            <Image size={18} strokeWidth={1.8} />
+            <BrandMark size={23} animated />
           </span>
           {!navigationCollapsed ? (
             <span {...stylex.props(styles.brandCopy)}>
-              <strong>Image Studio</strong>
-              <small>GPT Image 2</small>
+              <strong>SceneMeld</strong>
+              <small>Local-first image workspace</small>
             </span>
           ) : null}
         </div>
@@ -151,7 +151,7 @@ export default function Sidebar({
                   <span {...stylex.props(styles.deleteAction)}>
                     <Popconfirm
                       title={`删除“${conversation.title}”？`}
-                      description="消息、参考图、生成图片和未发送内容将从此浏览器删除，无法撤销。"
+                      description="消息、参考图、生成图片和未发送内容将从当前设备删除，无法撤销。"
                       okText="删除"
                       cancelText="取消"
                       okButtonProps={{ danger: true }}
@@ -180,7 +180,7 @@ export default function Sidebar({
 
       {!navigationCollapsed ? (
         <p {...stylex.props(styles.footer)}>
-          创作记录保存在此浏览器中，可在设置里单独清除。请下载重要图片作为备份。
+          创作记录保存在当前设备中，可在设置里单独清除。请下载重要图片作为备份。
         </p>
       ) : null}
     </aside>

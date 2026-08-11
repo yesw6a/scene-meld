@@ -1,7 +1,8 @@
 import * as stylex from "@stylexjs/stylex";
 import { Prompts } from "@ant-design/x";
-import { Camera, LayoutTemplate, Sparkles, WandSparkles } from "lucide-react";
+import { Camera, Clapperboard, LayoutTemplate, SlidersHorizontal } from "lucide-react";
 
+import BrandMark from "./BrandMark";
 import { colors, materials, motion, radii, shadows } from "../styles/tokens.stylex";
 
 interface WelcomePanelProps {
@@ -18,8 +19,8 @@ export default function WelcomePanel({
   return (
     <section {...stylex.props(styles.root)} aria-labelledby="welcome-title">
       <div {...stylex.props(styles.eyebrow)}>
-        <Sparkles size={15} aria-hidden="true" />
-        对话式图片创作
+        <BrandMark size={16} />
+        SceneMeld · 对话式图片创作
       </div>
       <h1 id="welcome-title" {...stylex.props(styles.title)}>
         把脑海里的画面，
@@ -49,7 +50,7 @@ export default function WelcomePanel({
       />
 
       <div {...stylex.props(styles.note)}>
-        <WandSparkles size={17} aria-hidden="true" />
+        <SlidersHorizontal size={17} aria-hidden="true" />
         <span>建议写清楚主体、环境、构图、光线、材质与画面比例。</span>
       </div>
     </section>
@@ -73,7 +74,7 @@ const PROMPT_ITEMS = [
   },
   {
     key: "story",
-    icon: <Sparkles size={18} aria-hidden="true" />,
+    icon: <Clapperboard size={18} aria-hidden="true" />,
     label: "叙事场景",
     description:
       "雨夜旧书店即将打烊，店员站在暖色窗边整理最后一本书，街道倒影延伸至远处，电影静帧，35mm 胶片质感，横向构图",

@@ -25,7 +25,21 @@ import {
   loadNavigationCollapsed,
   saveNavigationCollapsed,
 } from "./lib/navigation-preferences";
-import { clearStoredSettings, loadSettings, saveSettings } from "./lib/settings";
+import {
+  clearStoredSettings,
+  hydrateSettingsApiKey,
+  loadSettings,
+  saveSettings,
+  saveSettingsPreferences,
+} from "./lib/settings";
+import { getSceneMeldRuntime, isDesktopRuntime } from "./lib/runtime";
+import {
+  connectionPresentation,
+  countGenerations,
+  createInitialWorkspace,
+  mimeExtension,
+  missingAttachmentMessage,
+} from "./lib/studio-presenters";
 import {
   base64ToBlob,
   clearWorkspaceData,
@@ -35,7 +49,7 @@ import {
   saveGeneratedImage,
   saveWorkspace,
 } from "./lib/studio-db";
-import { colors } from "./styles/tokens.stylex";
+import { appStyles as styles } from "./styles/app.stylex";
 import type {
   AssistantMessage,
   ConnectionStatus,
@@ -56,6 +70,7 @@ export default function StudioApp() {
   const [workspaceReady, setWorkspaceReady] = useState(false);
   const [storageAvailable, setStorageAvailable] = useState(true);
   const [settings, setSettings] = useState<GenerationSettings>(() => loadSettings());
+  const [settingsReady, setSettingsReady] = useState(() => !isDesktopRuntime());
   const [draft, setDraft] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [navigationOpen, setNavigationOpen] = useState(false);
@@ -68,6 +83,7 @@ export default function StudioApp() {
     useState<SettledConnectionStatus>("ready");
   const abortRef = useRef<AbortController | null>(null);
   const initializationStarted = useRef(false);
+  const settingsHydrationStarted = useRef(false);
   const storageWarningShown = useRef(false);
 
   const configured = Boolean(settings.baseUrl && settings.apiKey && settings.model);
@@ -118,6 +134,20 @@ export default function StudioApp() {
       }
     })();
   }, [toast]);
+
+  useEffect(() => {
+    if (settingsHydrationStarted.current) {
+      return;
+    }
+
+    settingsHydrationStarted.current = true;
+    void hydrateSettingsApiKey(settings)
+      .then(setSettings)
+      .catch(() => {
+        toast.warning("无法读取系统凭据管理器中的 API Key，请在设置中重新填写。");
+      })
+      .finally(() => setSettingsReady(true));
+  }, [settings, toast]);
 
   useEffect(() => {
     if (!workspaceReady || !workspace || !storageAvailable) {
@@ -327,29 +357,42 @@ export default function StudioApp() {
     ],
   );
 
-  const handleSaveSettings = (nextSettings: GenerationSettings) => {
+  const handleSaveSettings = async (nextSettings: GenerationSettings) => {
     const connectionChanged =
       nextSettings.baseUrl !== settings.baseUrl ||
       nextSettings.apiKey !== settings.apiKey ||
       nextSettings.model !== settings.model;
 
-    setSettings(nextSettings);
-    saveSettings(nextSettings);
-    setSettingsOpen(false);
-    if (connectionChanged) {
-      setLastConnectionStatus("ready");
+    try {
+      await saveSettings(nextSettings);
+      setSettings(nextSettings);
+      setSettingsOpen(false);
+      if (connectionChanged) {
+        setLastConnectionStatus("ready");
+      }
+      const desktop = isDesktopRuntime();
+      toast.success(
+        nextSettings.rememberApiKey
+          ? desktop
+            ? "设置已保存，API Key 由操作系统凭据管理器保管。"
+            : "设置已保存，API Key 将保留在此浏览器中。"
+          : desktop
+            ? "设置已保存，API Key 仅保留到本次应用会话结束。"
+            : "设置已保存，API Key 仅保留到页面刷新前。",
+      );
+    } catch {
+      toast.error(
+        isDesktopRuntime()
+          ? "无法写入系统凭据管理器，设置未保存。"
+          : "无法保存连接设置，请检查浏览器存储权限。",
+      );
     }
-    toast.success(
-      nextSettings.rememberApiKey
-        ? "设置已保存，API Key 将保留在此浏览器中。"
-        : "设置已保存，API Key 仅保留到页面刷新前。",
-    );
   };
 
   const handleQuickSettingChange = (patch: Partial<GenerationSettings>) => {
     setSettings((current) => {
       const next = { ...current, ...patch };
-      saveSettings(next);
+      saveSettingsPreferences(next);
       return next;
     });
   };
@@ -359,11 +402,15 @@ export default function StudioApp() {
     saveNavigationCollapsed(collapsed);
   };
 
-  const handleResetSettings = () => {
-    const reset = clearStoredSettings();
-    setSettings(reset);
-    setLastConnectionStatus("ready");
-    toast.success("连接配置已清除。");
+  const handleResetSettings = async () => {
+    try {
+      const reset = await clearStoredSettings();
+      setSettings(reset);
+      setLastConnectionStatus("ready");
+      toast.success("连接配置已清除。");
+    } catch {
+      toast.error("无法清除系统凭据管理器中的 API Key，请稍后重试。");
+    }
   };
 
   const handleClearHistory = async () => {
@@ -454,7 +501,7 @@ export default function StudioApp() {
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = `gpt-image-${new Date(item.createdAt).toISOString().replace(/[:.]/g, "-")}.${mimeExtension(item.mimeType)}`;
+      link.download = `scenemeld-${new Date(item.createdAt).toISOString().replace(/[:.]/g, "-")}.${mimeExtension(item.mimeType)}`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 0);
     } catch {
@@ -583,7 +630,7 @@ export default function StudioApp() {
     }
   };
 
-  if (!workspaceReady || !workspace || !activeConversation) {
+  if (!workspaceReady || !settingsReady || !workspace || !activeConversation) {
     return (
       <div {...stylex.props(styles.loadingShell)}>
         <Spin size="large" />
@@ -592,7 +639,7 @@ export default function StudioApp() {
     );
   }
 
-  const connection = connectionPresentation(connectionStatus);
+  const connection = connectionPresentation(connectionStatus, getSceneMeldRuntime());
   const createDisabledReason = isGenerating
     ? "请先等待当前图片生成完成，或停止生成。"
     : activeConversation.messages.length === 0
@@ -712,88 +759,3 @@ export default function StudioApp() {
     </div>
   );
 }
-
-function createInitialWorkspace(): WorkspaceSnapshot {
-  const conversation = createConversation();
-  return { conversations: [conversation], activeId: conversation.id };
-}
-
-function connectionPresentation(status: ConnectionStatus): {
-  label: string;
-  description: string;
-  color?: string;
-} {
-  return {
-    incomplete: { label: "未配置", description: "连接信息尚未填写完整。" },
-    ready: {
-      label: "配置完整",
-      description: "浏览器将在下一次生成时直接验证目标 API。",
-      color: "blue",
-    },
-    requesting: {
-      label: "请求中",
-      description: "浏览器正在直接向目标 API 请求图片。",
-      color: "processing",
-    },
-    success: { label: "最近成功", description: "最近一次图片生成请求成功。", color: "green" },
-    error: { label: "最近失败", description: "最近一次图片生成请求失败。", color: "red" },
-  }[status];
-}
-
-function countGenerations(conversation: Conversation): number {
-  return conversation.messages.filter((item) => item.type === "assistant").length;
-}
-
-function mimeExtension(mimeType?: string): string {
-  return {
-    "image/jpeg": "jpg",
-    "image/webp": "webp",
-    "image/gif": "gif",
-  }[mimeType || ""] ?? "png";
-}
-
-function missingAttachmentMessage(names: string[]): string {
-  const label =
-    names.length > 2
-      ? `${names.slice(0, 2).join("、")}等 ${names.length} 张图片`
-      : names.join("、");
-  return `参考图${label ? `“${label}”` : ""}的本地文件已不可用，无法复用这次图生图请求。`;
-}
-
-const styles = stylex.create({
-  loadingShell: {
-    minWidth: "320px",
-    minHeight: "100dvh",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexDirection: "column",
-    gap: "14px",
-    color: colors.muted,
-    backgroundColor: colors.canvas,
-  },
-  app: {
-    minWidth: "320px",
-    minHeight: "100dvh",
-    display: "flex",
-    color: colors.ink,
-    background: colors.canvasAmbient,
-  },
-  main: {
-    minWidth: 0,
-    height: "100dvh",
-    flex: 1,
-    display: "grid",
-    gridTemplateRows: "auto minmax(0, 1fr) auto",
-    gap: "10px",
-    padding: "12px",
-    overflow: "hidden",
-    outline: "none",
-  },
-  conversationPane: {
-    minHeight: 0,
-    overflowY: "auto",
-    overscrollBehavior: "contain",
-    scrollbarGutter: "stable",
-  },
-});

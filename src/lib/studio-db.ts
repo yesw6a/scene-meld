@@ -10,6 +10,7 @@ import type {
   WorkspaceSnapshot,
 } from "../types";
 
+// 保留旧数据库名，确保品牌迁移后仍可读取已有会话和图片。
 const DATABASE_NAME = "gpt-image-2-studio";
 const DATABASE_VERSION = 1;
 const ACTIVE_CONVERSATION_KEY = "active-conversation";

@@ -1,48 +1,48 @@
 :root {
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  color: #0b1320;
-  background: #f2f6fb;
+  color: #12201e;
+  background: #f4f7f6;
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --app-canvas: #f2f6fb;
+  --app-canvas: #f4f7f6;
   --app-canvas-ambient:
-    radial-gradient(circle at 14% 0%, rgb(82 168 255 / 18%), transparent 32%),
-    radial-gradient(circle at 88% 10%, rgb(171 205 244 / 24%), transparent 30%),
-    #f2f6fb;
-  --app-ink: #0b1320;
+    radial-gradient(circle at 14% 0%, rgb(94 234 212 / 13%), transparent 32%),
+    radial-gradient(circle at 88% 10%, rgb(157 190 181 / 18%), transparent 30%),
+    #f4f7f6;
+  --app-ink: #12201e;
   --app-glass-subtle: rgb(255 255 255 / 48%);
   --app-glass-chrome: rgb(248 251 255 / 64%);
   --app-glass-overlay: rgb(250 252 255 / 82%);
-  --app-glass-fallback: #f8fafd;
-  --app-glass-border: rgb(103 126 155 / 22%);
+  --app-glass-fallback: #fafcfb;
+  --app-glass-border: rgb(83 112 105 / 22%);
   --app-glass-highlight: rgb(255 255 255 / 78%);
-  --app-glass-shadow: 0 28px 90px rgb(34 61 94 / 20%);
-  --app-scrim: rgb(17 29 48 / 48%);
-  --app-primary-hairline: rgb(0 103 217 / 34%);
-  --app-selected-shadow: 0 1px 2px rgb(34 61 94 / 10%);
+  --app-glass-shadow: 0 28px 90px rgb(25 65 57 / 20%);
+  --app-scrim: rgb(14 30 27 / 48%);
+  --app-primary-hairline: rgb(15 118 110 / 34%);
+  --app-selected-shadow: 0 1px 2px rgb(25 65 57 / 10%);
 }
 
 :root[data-theme="dark"] {
-  color: #f5f7fb;
-  background: #0b0e14;
+  color: #e8f3f0;
+  background: #0b1110;
   color-scheme: dark;
-  --app-canvas: #0b0e14;
+  --app-canvas: #0b1110;
   --app-canvas-ambient:
-    radial-gradient(circle at 12% 0%, rgb(41 151 255 / 20%), transparent 34%),
-    radial-gradient(circle at 88% 8%, rgb(72 111 161 / 18%), transparent 30%),
-    #0b0e14;
-  --app-ink: #f5f7fb;
-  --app-glass-subtle: rgb(18 25 37 / 48%);
-  --app-glass-chrome: rgb(17 23 34 / 64%);
-  --app-glass-overlay: rgb(15 20 30 / 82%);
-  --app-glass-fallback: #151b26;
+    radial-gradient(circle at 12% 0%, rgb(94 234 212 / 16%), transparent 34%),
+    radial-gradient(circle at 88% 8%, rgb(75 115 105 / 18%), transparent 30%),
+    #0b1110;
+  --app-ink: #e8f3f0;
+  --app-glass-subtle: rgb(16 28 25 / 48%);
+  --app-glass-chrome: rgb(15 25 23 / 64%);
+  --app-glass-overlay: rgb(13 23 21 / 82%);
+  --app-glass-fallback: #14201e;
   --app-glass-border: rgb(255 255 255 / 14%);
   --app-glass-highlight: rgb(255 255 255 / 18%);
   --app-glass-shadow: 0 34px 100px rgb(0 0 0 / 48%);
   --app-scrim: rgb(0 0 0 / 58%);
-  --app-primary-hairline: rgb(82 168 255 / 42%);
+  --app-primary-hairline: rgb(94 234 212 / 42%);
   --app-selected-shadow: 0 1px 2px rgb(0 0 0 / 30%);
 }
 
@@ -83,7 +83,7 @@ button,
   left: 8px;
   padding: 10px 14px;
   color: #ffffff;
-  background: #0067d9;
+  background: #0f766e;
   border-radius: 999px;
   box-shadow: var(--app-glass-shadow);
   transform: translateY(-150%);
