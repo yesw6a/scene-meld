@@ -1,4 +1,5 @@
 mod http;
+mod files;
 mod request_state;
 mod secrets;
 mod types;
@@ -75,11 +76,13 @@ async fn delete_api_key() -> Result<(), CommandError> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .manage(RequestState::default())
         .invoke_handler(tauri::generate_handler![
             generate_image,
             edit_image,
             cancel_image_request,
+            files::save_image_file,
             load_api_key,
             save_api_key,
             delete_api_key,

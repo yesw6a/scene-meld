@@ -6,9 +6,11 @@
 node_modules/
 dist/
 src-tauri/target/
+src-tauri/gen/
 output/
 tmp/
 *.log
 pnpm-debug.log*
 .DS_Store
 Thumbs.db
+.claude/

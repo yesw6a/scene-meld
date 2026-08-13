@@ -10,11 +10,44 @@ permissions:
   contents: write
 
 jobs:
-  release-windows:
-    runs-on: windows-latest
+  release-desktop:
+    name: Build ${{ matrix.name }} draft
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - name: macOS Intel
+            os: macos-13
+            target: x86_64-apple-darwin
+          - name: macOS Apple Silicon
+            os: macos-14
+            target: aarch64-apple-darwin
+          - name: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Linux desktop dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            libdbus-1-dev \
+            libxdo-dev \
+            libssl-dev \
+            librsvg2-dev \
+            pkg-config \
+            patchelf \
+            xdg-utils
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -29,9 +62,9 @@ jobs:
           cache: pnpm
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.88.0
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@v2
@@ -44,17 +77,21 @@ jobs:
       - name: Check frontend types
         run: pnpm check
 
-      - name: Build unsigned Windows draft
-        uses: tauri-apps/tauri-action@v0
+      - name: Build unsigned desktop draft
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tagName: v__VERSION__
           releaseName: SceneMeld v__VERSION__
           releaseBody: |
-            Windows x64 draft build of SceneMeld Desktop.
+            SceneMeld Desktop v__VERSION__ 多平台预览构建。
 
-            This build is currently unsigned and may trigger Microsoft SmartScreen. Verify the repository release and checksums before running it.
+            当前构建未配置 Windows 代码签名或 macOS 公证，可能触发 SmartScreen 或 Gatekeeper 提示。请先核对仓库来源和校验值。
           releaseDraft: true
           prerelease: false
-          args: --target x86_64-pc-windows-msvc
+          tauriScript: pnpm tauri
+          retryAttempts: 2
+          uploadUpdaterJson: false
+          releaseAssetNamePattern: SceneMeld_[version]_[platform]_[arch][_setup][ext]
+          args: --ci --target ${{ matrix.target }}

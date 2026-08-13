@@ -209,8 +209,8 @@ function createThemeConfig(mode: ResolvedAppearanceMode): ThemeConfig {
       },
       Input: {
         activeShadow: darkMode
-          ? "0 0 0 3px rgba(94, 234, 212, 0.24)"
-          : "0 0 0 3px rgba(15, 118, 110, 0.20)",
+          ? "0 0 0 3px rgba(82, 168, 255, 0.30)"
+          : "0 0 0 3px rgba(0, 103, 217, 0.24)",
       },
     },
   };

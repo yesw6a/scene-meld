@@ -21,6 +21,7 @@ import {
   resolveMessageImageAttachments,
 } from "./lib/image-attachments";
 import { endpointHostLabel } from "./lib/image-endpoint";
+import { saveImageBlob } from "./lib/image-save";
 import {
   loadNavigationCollapsed,
   saveNavigationCollapsed,
@@ -498,12 +499,11 @@ export default function StudioApp() {
         throw new Error("missing image");
       }
 
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `scenemeld-${new Date(item.createdAt).toISOString().replace(/[:.]/g, "-")}.${mimeExtension(item.mimeType)}`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 0);
+      const fileName = `scenemeld-${new Date(item.createdAt).toISOString().replace(/[:.]/g, "-")}.${mimeExtension(item.mimeType)}`;
+      const result = await saveImageBlob(blob, fileName, item.mimeType ?? "image/png");
+      if (result === "saved") {
+        toast.success("图片已保存。");
+      }
     } catch {
       toast.error("无法读取本地图片，请重新生成或使用预览中的保存功能。");
     }
@@ -726,7 +726,7 @@ export default function StudioApp() {
         onClose={() => setSettingsOpen(false)}
         onSave={handleSaveSettings}
         onReset={handleResetSettings}
-        onClearHistory={() => void handleClearHistory()}
+        onClearHistory={handleClearHistory}
       />
 
       <Drawer

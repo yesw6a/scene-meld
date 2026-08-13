@@ -1,5 +1,5 @@
 import * as stylex from "@stylexjs/stylex";
-import { Popconfirm, Tooltip } from "antd";
+import { App as AntdApp, Tooltip } from "antd";
 import {
   MessageSquare,
   PanelLeftClose,
@@ -42,6 +42,20 @@ export default function Sidebar({
   onDelete,
 }: SidebarProps) {
   const navigationCollapsed = collapsed && !embedded;
+  const { modal } = AntdApp.useApp();
+
+  const confirmDelete = (conversation: Conversation) => {
+    modal.confirm({
+      title: `删除“${conversation.title}”？`,
+      content: "消息、参考图、生成图片和未发送内容将从当前设备删除，无法撤销。",
+      okText: "删除",
+      cancelText: "取消",
+      okType: "danger",
+      centered: true,
+      mask: { closable: false },
+      onOk: () => onDelete(conversation.id),
+    });
+  };
 
   return (
     <aside
@@ -149,27 +163,18 @@ export default function Sidebar({
                   placement="right"
                 >
                   <span {...stylex.props(styles.deleteAction)}>
-                    <Popconfirm
-                      title={`删除“${conversation.title}”？`}
-                      description="消息、参考图、生成图片和未发送内容将从当前设备删除，无法撤销。"
-                      okText="删除"
-                      cancelText="取消"
-                      okButtonProps={{ danger: true }}
+                    <button
+                      type="button"
+                      {...stylex.props(
+                        styles.deleteButton,
+                        embedded && styles.deleteButtonEmbedded,
+                      )}
                       disabled={deletionDisabled}
-                      onConfirm={() => onDelete(conversation.id)}
+                      aria-label={`删除会话：${conversation.title}`}
+                      onClick={() => confirmDelete(conversation)}
                     >
-                      <button
-                        type="button"
-                        {...stylex.props(
-                          styles.deleteButton,
-                          embedded && styles.deleteButtonEmbedded,
-                        )}
-                        disabled={deletionDisabled}
-                        aria-label={`删除会话：${conversation.title}`}
-                      >
-                        <Trash2 size={16} aria-hidden="true" />
-                      </button>
-                    </Popconfirm>
+                      <Trash2 size={16} aria-hidden="true" />
+                    </button>
                   </span>
                 </Tooltip>
               ) : null}

@@ -3,5 +3,5 @@
   "identifier": "main-capability",
   "description": "Minimum permissions for the SceneMeld main window.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:default"]
 }

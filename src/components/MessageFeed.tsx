@@ -1,7 +1,12 @@
-import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import * as stylex from "@stylexjs/stylex";
 import { Actions, Bubble } from "@ant-design/x";
-import { Button, Image, Popconfirm, Tooltip } from "antd";
+import { App as AntdApp, Button, Image, Tooltip } from "antd";
 import {
   AlertCircle,
   Copy,
@@ -349,44 +354,54 @@ function ActionButton({
   danger?: boolean;
   onClick?: () => void;
 }) {
+  const button = (
+    <Button
+      type="text"
+      size="small"
+      icon={icon}
+      danger={danger}
+      disabled={disabled}
+      aria-label={ariaLabel}
+      className={stylex.props(
+        styles.actionButton,
+        danger && styles.actionButtonDanger,
+      ).className}
+      onClick={onClick}
+    />
+  );
+
   return (
     <Tooltip title={label} mouseEnterDelay={0.35}>
-      <Button
-        type="text"
-        size="small"
-        icon={icon}
-        danger={danger}
-        disabled={disabled}
-        aria-label={ariaLabel}
-        className={stylex.props(
-          styles.actionButton,
-          danger && styles.actionButtonDanger,
-        ).className}
-        onClick={onClick}
-      />
+      {button}
     </Tooltip>
   );
 }
 
 function DeleteTurnAction({ messageIds, busy, onDelete }: MessageActionsProps) {
+  const { modal } = AntdApp.useApp();
+
+  const confirmDelete = () => {
+    modal.confirm({
+      title: "删除这轮对话？",
+      content: "用户提示词、AI 回答和本地图片都会删除，且无法撤销。",
+      okText: "删除",
+      cancelText: "取消",
+      okType: "danger",
+      centered: true,
+      mask: { closable: false },
+      onOk: () => onDelete(messageIds),
+    });
+  };
+
   return (
-    <Popconfirm
-      title="删除这轮对话？"
-      description="用户提示词、AI 回答和本地图片都会删除，且无法撤销。"
-      okText="删除"
-      cancelText="取消"
-      okButtonProps={{ danger: true }}
+    <ActionButton
+      icon={<Trash2 size={15} />}
+      label="删除"
+      ariaLabel="删除这轮对话"
+      danger
       disabled={busy}
-      onConfirm={() => onDelete(messageIds)}
-    >
-      <ActionButton
-        icon={<Trash2 size={15} />}
-        label="删除"
-        ariaLabel="删除这轮对话"
-        danger
-        disabled={busy}
-      />
-    </Popconfirm>
+      onClick={confirmDelete}
+    />
   );
 }
 

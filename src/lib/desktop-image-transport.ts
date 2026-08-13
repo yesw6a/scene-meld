@@ -4,6 +4,7 @@ import type {
   ImageAttachmentSource,
 } from "../types";
 import type { ImageTransport } from "./image-transport";
+import { arrayBufferToBase64 } from "./base64";
 
 interface DesktopAttachment {
   name: string;
@@ -83,7 +84,15 @@ async function invokeImageCommand(
   }
 
   const { invoke } = await import("@tauri-apps/api/core");
+  if (signal.aborted) {
+    throw abortError();
+  }
+
+  let requestStarted = false;
   const cancel = () => {
+    if (!requestStarted) {
+      return;
+    }
     void invoke("cancel_image_request", { requestId: request.requestId }).catch(
       () => undefined,
     );
@@ -91,6 +100,10 @@ async function invokeImageCommand(
   signal.addEventListener("abort", cancel, { once: true });
 
   try {
+    if (signal.aborted) {
+      throw abortError();
+    }
+    requestStarted = true;
     return await invoke<GenerateImageResponse>(command, { request });
   } catch (error) {
     if (signal.aborted || isCancellationError(error)) {
@@ -100,16 +113,6 @@ async function invokeImageCommand(
   } finally {
     signal.removeEventListener("abort", cancel);
   }
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  const chunkSize = 0x8000;
-  let binary = "";
-  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
-  }
-  return window.btoa(binary);
 }
 
 function isCancellationError(error: unknown): boolean {

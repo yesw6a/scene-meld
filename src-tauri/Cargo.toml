@@ -1,10 +1,11 @@
 [package]
 name = "scenemeld"
-version = "1.1.0"
+version = "1.2.0"
 description = "SceneMeld Desktop native shell"
 authors = ["SceneMeld contributors"]
 edition = "2021"
 license = "MIT"
+rust-version = "1.88"
 
 [lib]
 name = "scenemeld_lib"
@@ -16,12 +17,13 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 base64 = "0.22"
 futures-util = "0.3"
-keyring = "3"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service", "crypto-rust"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = [] }
-tokio = { version = "1", features = ["sync"] }
+tauri-plugin-dialog = "2"
+tokio = { version = "1", features = ["macros", "sync"] }
 url = "2"
 
 [profile.release]

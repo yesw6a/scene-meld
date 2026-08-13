@@ -31,6 +31,14 @@ pub struct ImageResponse {
     pub source: String,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SaveImageRequest {
+    pub file_name: String,
+    pub mime_type: String,
+    pub base64: String,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandError {

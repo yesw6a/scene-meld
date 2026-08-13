@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.2.0 (2026-08-10 ~ 2026-08-14)
+
+### 📦 Version
+
+- 项目版本从 `1.1.0` 升级到 `1.2.0`。
+- `package.json`、Tauri 配置、Rust crate 与 Cargo lockfile 版本统一为 `1.2.0`。
+
+### 🎉 Added
+
+- 新增桌面端图片保存流程，可通过原生保存对话框选择文件位置，并校验文件名、格式与大小。
+- 新增 Windows x64、macOS Intel、macOS Apple Silicon 与 Linux x64 的桌面 CI 和 Draft Release 构建矩阵。
+- 新增 Rust 1.88 工具链声明及桌面构建所需的平台依赖说明。
+
+### 🔄 Changed
+
+- 桌面端命令封装与图片 Base64 传输逻辑拆分为独立模块，并改进请求取消时序。
+- 桌面开发、检查、构建脚本统一通过运行时探测脚本调用 Tauri/Cargo。
+- 更新 README 中的多平台桌面开发、构建与发布说明。
+
+### 🐛 Fixed
+
+- Tooltip 内容改为垂直居中。
+- 消息轮次、会话、清除本地记录和清除连接配置的确认交互改为居中、不透明的 Modal，并保留不可点击关闭的遮罩。
+- 修复桌面端窗口默认最大化及相关玻璃层/主题样式的一致性问题。
+
+### ✅ Verify
+
+- `pnpm.cmd run check` 通过。
+- `pnpm.cmd run build` 通过；Vite 保留主包超过 500 kB 的非阻断提示。
+- `cargo check --locked --manifest-path src-tauri/Cargo.toml` 通过（Rust `1.88.0`）；未启动桌面 GUI 或发布工作流。
+
 ## v1.1.0 (2026-08-10 ~ 2026-08-14)
 
 ### 📦 Version

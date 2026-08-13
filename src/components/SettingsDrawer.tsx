@@ -7,7 +7,7 @@ import {
   Drawer,
   Form,
   Input,
-  Popconfirm,
+  App as AntdApp,
   Segmented,
   Select,
   Space,
@@ -69,6 +69,7 @@ export default function SettingsDrawer({
   onClearHistory,
 }: SettingsDrawerProps) {
   const { mode: appearanceMode, resolvedMode, setMode: setAppearanceMode } = useAppearance();
+  const { modal } = AntdApp.useApp();
   const [draft, setDraft] = useState(settings);
   const [endpointError, setEndpointError] = useState<string>();
   const [formError, setFormError] = useState<string>();
@@ -130,6 +131,34 @@ export default function SettingsDrawer({
     await onReset();
     setEndpointError(undefined);
     setFormError(undefined);
+  };
+
+  const confirmClearHistory = () => {
+    modal.confirm({
+      title: "清除全部本地创作记录？",
+      content: "会话、消息和已保存图片都会删除，且无法撤销。连接配置不受影响。",
+      okText: "清除记录",
+      cancelText: "取消",
+      okType: "danger",
+      centered: true,
+      mask: { closable: false },
+      onOk: onClearHistory,
+    });
+  };
+
+  const confirmReset = () => {
+    modal.confirm({
+      title: "清除连接配置？",
+      content: "创作记录会保留，但下次生成前需要重新填写连接信息。",
+      okText: "清除配置",
+      cancelText: "取消",
+      centered: true,
+      mask: { closable: false },
+      okButtonProps: {
+        className: stylex.props(styles.warningConfirmButton).className,
+      },
+      onOk: handleReset,
+    });
   };
 
   return (
@@ -383,23 +412,15 @@ export default function SettingsDrawer({
             </div>
           </div>
 
-          <Popconfirm
-            title="清除全部本地创作记录？"
-            description="会话、消息和已保存图片都会删除，且无法撤销。连接配置不受影响。"
-            okText="清除记录"
-            cancelText="取消"
-            okButtonProps={{ danger: true, loading: historyClearing }}
-            onConfirm={() => void onClearHistory()}
+          <Button
+            danger
+            icon={<Trash2 size={16} />}
+            loading={historyClearing}
+            className={stylex.props(styles.dangerButton).className}
+            onClick={confirmClearHistory}
           >
-            <Button
-              danger
-              icon={<Trash2 size={16} />}
-              loading={historyClearing}
-              className={stylex.props(styles.dangerButton).className}
-            >
-              清除创作记录
-            </Button>
-          </Popconfirm>
+            清除创作记录
+          </Button>
         </section>
 
         <Divider />
@@ -413,23 +434,13 @@ export default function SettingsDrawer({
               清除 API 基础地址与 API Key，并恢复默认模型、画面比例和质量。创作记录不受影响。
             </Typography.Paragraph>
           </div>
-          <Popconfirm
-            title="清除连接配置？"
-            description="创作记录会保留，但下次生成前需要重新填写连接信息。"
-            okText="清除配置"
-            cancelText="取消"
-            okButtonProps={{
-              className: stylex.props(styles.warningConfirmButton).className,
-            }}
-            onConfirm={handleReset}
+          <Button
+            icon={<RotateCcw size={16} />}
+            className={stylex.props(styles.warningButton).className}
+            onClick={confirmReset}
           >
-            <Button
-              icon={<RotateCcw size={16} />}
-              className={stylex.props(styles.warningButton).className}
-            >
-              清除连接配置
-            </Button>
-          </Popconfirm>
+            清除连接配置
+          </Button>
         </section>
       </div>
     </Drawer>

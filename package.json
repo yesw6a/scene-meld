@@ -1,6 +1,6 @@
 {
   "name": "scenemeld",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A local-first conversational image workspace for user-configured compatible endpoints.",
   "private": true,
   "license": "MIT",
@@ -15,10 +15,10 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "check": "tsc --noEmit",
-    "tauri": "tauri",
-    "desktop:dev": "tauri dev",
-    "desktop:build": "tauri build",
-    "desktop:check": "cargo check --manifest-path src-tauri/Cargo.toml"
+    "tauri": "node scripts/run-tauri.cjs",
+    "desktop:dev": "node scripts/run-tauri.cjs dev",
+    "desktop:build": "node scripts/run-tauri.cjs build",
+    "desktop:check": "node scripts/run-tauri.cjs --cargo-check --locked --manifest-path src-tauri/Cargo.toml"
   },
   "dependencies": {
     "@ant-design/x": "^2.9.0",

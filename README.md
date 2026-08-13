@@ -25,7 +25,7 @@ Desktop 版使用 Tauri 2 复用同一套 React 界面，并通过本机 Rust HT
 Desktop device ──原生直接请求──> configured Endpoint
 ```
 
-Desktop 不依赖浏览器 CORS；选择记住 API Key 时，Key 保存到操作系统凭据管理器，不写入 localStorage。Windows x64 是首个发布目标，macOS 与 Linux 保留可移植结构，但当前不声明已完成平台验证。
+Desktop 不依赖浏览器 CORS；选择记住 API Key 时，Key 保存到操作系统凭据管理器，不写入 localStorage。当前桌面构建矩阵覆盖 Windows x64、macOS Intel、macOS Apple Silicon 与 Linux x64，正式公开分发前仍需要在三类系统上做人工冒烟测试。
 
 ## 功能
 
@@ -93,7 +93,7 @@ pnpm build
 
 ## Desktop 开发与构建
 
-除 Node.js 与 pnpm 外，还需要 Tauri 2 对应的 Rust 和平台构建环境。Windows 请安装原生 MSVC Rust 工具链与 WebView2 开发依赖。
+除 Node.js 与 pnpm 外，还需要 Rust 1.88 和 Tauri 2 对应的平台构建环境。Windows 请安装原生 MSVC Rust 工具链与 WebView2 开发依赖；macOS 需要 Xcode Command Line Tools；Linux 需要 WebKitGTK 4.1、Ayatana AppIndicator、D-Bus、libxdo、OpenSSL、librsvg、pkg-config 与 patchelf 等系统依赖。
 
 ```powershell
 pnpm desktop:check
@@ -101,7 +101,7 @@ pnpm desktop:dev
 pnpm desktop:build
 ```
 
-`desktop:dev` 会启动 Vite 与桌面窗口，应由开发者在本机主动运行。GitHub Actions 的 `Desktop CI` 会在 Windows 上执行前端检查、Web 构建与 `cargo check`。
+`desktop:dev` 会启动 Vite 与桌面窗口，应由开发者在本机主动运行。GitHub Actions 的 `Desktop CI` 会在 Windows x64、macOS Intel、macOS Apple Silicon 与 Linux x64 上执行前端检查、Web 构建、`cargo check --locked` 与 Tauri bundle 构建。
 
 ## 发布
 
@@ -119,7 +119,7 @@ pnpm desktop:build
 
 ### Desktop Draft Release
 
-推送 `v*` 标签或手动运行 `Desktop Draft Release` 工作流，会生成 Windows x64 GitHub Draft Release。当前流程不包含代码签名证书，因此安装包可能触发 Microsoft SmartScreen；正式公开推广前应配置可信代码签名并验证发布校验值。
+推送 `v*` 标签或手动运行 `Desktop Draft Release` 工作流，会生成多平台 GitHub Draft Release。当前流程不包含 Windows 代码签名或 macOS 公证，因此安装包可能触发 Microsoft SmartScreen 或 Apple Gatekeeper；正式公开推广前应配置可信签名并验证发布校验值。
 
 ## 公开仓库注意事项
 

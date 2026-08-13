@@ -1,48 +1,48 @@
 :root {
   font-family:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
-  color: #12201e;
-  background: #f4f7f6;
+  color: #0b1320;
+  background: #f2f6fb;
   color-scheme: light;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
-  --app-canvas: #f4f7f6;
+  --app-canvas: #f2f6fb;
   --app-canvas-ambient:
-    radial-gradient(circle at 14% 0%, rgb(94 234 212 / 13%), transparent 32%),
-    radial-gradient(circle at 88% 10%, rgb(157 190 181 / 18%), transparent 30%),
-    #f4f7f6;
-  --app-ink: #12201e;
+    radial-gradient(circle at 14% 0%, rgb(82 168 255 / 13%), transparent 32%),
+    radial-gradient(circle at 88% 10%, rgb(155 180 210 / 18%), transparent 30%),
+    #f2f6fb;
+  --app-ink: #0b1320;
   --app-glass-subtle: rgb(255 255 255 / 48%);
   --app-glass-chrome: rgb(248 251 255 / 64%);
   --app-glass-overlay: rgb(250 252 255 / 82%);
-  --app-glass-fallback: #fafcfb;
-  --app-glass-border: rgb(83 112 105 / 22%);
+  --app-glass-fallback: #f8fafd;
+  --app-glass-border: rgb(77 112 160 / 22%);
   --app-glass-highlight: rgb(255 255 255 / 78%);
-  --app-glass-shadow: 0 28px 90px rgb(25 65 57 / 20%);
-  --app-scrim: rgb(14 30 27 / 48%);
-  --app-primary-hairline: rgb(15 118 110 / 34%);
-  --app-selected-shadow: 0 1px 2px rgb(25 65 57 / 10%);
+  --app-glass-shadow: 0 28px 90px rgb(16 52 96 / 20%);
+  --app-scrim: rgb(11 20 40 / 48%);
+  --app-primary-hairline: rgb(0 103 217 / 34%);
+  --app-selected-shadow: 0 1px 2px rgb(16 52 96 / 10%);
 }
 
 :root[data-theme="dark"] {
-  color: #e8f3f0;
-  background: #0b1110;
+  color: #f5f7fb;
+  background: #0b0e14;
   color-scheme: dark;
-  --app-canvas: #0b1110;
+  --app-canvas: #0b0e14;
   --app-canvas-ambient:
-    radial-gradient(circle at 12% 0%, rgb(94 234 212 / 16%), transparent 34%),
-    radial-gradient(circle at 88% 8%, rgb(75 115 105 / 18%), transparent 30%),
-    #0b1110;
-  --app-ink: #e8f3f0;
-  --app-glass-subtle: rgb(16 28 25 / 48%);
-  --app-glass-chrome: rgb(15 25 23 / 64%);
-  --app-glass-overlay: rgb(13 23 21 / 82%);
-  --app-glass-fallback: #14201e;
+    radial-gradient(circle at 12% 0%, rgb(82 168 255 / 16%), transparent 34%),
+    radial-gradient(circle at 88% 8%, rgb(75 105 140 / 18%), transparent 30%),
+    #0b0e14;
+  --app-ink: #f5f7fb;
+  --app-glass-subtle: rgb(16 24 34 / 48%);
+  --app-glass-chrome: rgb(15 23 33 / 64%);
+  --app-glass-overlay: rgb(13 21 31 / 82%);
+  --app-glass-fallback: #131c28;
   --app-glass-border: rgb(255 255 255 / 14%);
   --app-glass-highlight: rgb(255 255 255 / 18%);
   --app-glass-shadow: 0 34px 100px rgb(0 0 0 / 48%);
   --app-scrim: rgb(0 0 0 / 58%);
-  --app-primary-hairline: rgb(94 234 212 / 42%);
+  --app-primary-hairline: rgb(82 168 255 / 42%);
   --app-selected-shadow: 0 1px 2px rgb(0 0 0 / 30%);
 }
 
@@ -83,7 +83,7 @@ button,
   left: 8px;
   padding: 10px 14px;
   color: #ffffff;
-  background: #0f766e;
+  background: #0067d9;
   border-radius: 999px;
   box-shadow: var(--app-glass-shadow);
   transform: translateY(-150%);
@@ -117,10 +117,10 @@ button,
   border-color: var(--app-glass-border) !important;
 }
 
-.ant-popover .ant-popover-inner,
+.ant-popover .ant-popover-container,
 .ant-select-dropdown,
 .ant-message-notice-content,
-.ant-tooltip .ant-tooltip-inner {
+.ant-tooltip .ant-tooltip-container {
   background: var(--app-glass-overlay) !important;
   border: 1px solid var(--app-glass-border);
   box-shadow:
@@ -128,6 +128,47 @@ button,
     inset 0 1px 0 var(--app-glass-highlight) !important;
   -webkit-backdrop-filter: blur(28px) saturate(165%);
   backdrop-filter: blur(28px) saturate(165%);
+}
+
+.ant-tooltip .ant-tooltip-container {
+  display: flex;
+  align-items: center;
+}
+
+.ant-modal-root .ant-modal-mask {
+  background: var(--app-scrim) !important;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+.ant-modal-root .ant-modal-container {
+  overflow: hidden;
+  background: var(--app-glass-fallback) !important;
+  border: 1px solid var(--app-glass-border);
+  border-radius: 16px;
+  box-shadow:
+    var(--app-glass-shadow),
+    inset 0 1px 0 var(--app-glass-highlight) !important;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+.ant-modal-root .ant-modal-header,
+.ant-modal-root .ant-modal-content,
+.ant-modal-root .ant-modal-body,
+.ant-modal-root .ant-modal-footer {
+  background: transparent !important;
+}
+
+.ant-modal-root .ant-modal-header,
+.ant-modal-root .ant-modal-footer {
+  border-color: var(--app-glass-border) !important;
+}
+
+/* Tooltip 与弹出层文字需随主题与玻璃背景保持对比，onPrimary 仅用于实色主按钮 */
+.ant-popover .ant-popover-container,
+.ant-tooltip .ant-tooltip-container {
+  color: var(--app-ink) !important;
 }
 
 .ant-popover .ant-popover-arrow::before {
@@ -193,21 +234,29 @@ button,
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .studio-glass-drawer .ant-drawer-content,
-  .ant-popover .ant-popover-inner,
+  .ant-modal-root .ant-modal-container,
+  .ant-popover .ant-popover-container,
   .ant-select-dropdown,
   .ant-message-notice-content,
-  .ant-tooltip .ant-tooltip-inner {
+  .ant-tooltip .ant-tooltip-container {
     background: var(--app-glass-fallback) !important;
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
   .studio-glass-drawer .ant-drawer-content,
-  .ant-popover .ant-popover-inner,
+  .ant-modal-root .ant-modal-container,
+  .ant-popover .ant-popover-container,
   .ant-select-dropdown,
   .ant-message-notice-content,
-  .ant-tooltip .ant-tooltip-inner {
+  .ant-tooltip .ant-tooltip-container {
     background: var(--app-glass-fallback) !important;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+
+  .ant-modal-root .ant-modal-mask {
+    background: var(--app-scrim) !important;
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
