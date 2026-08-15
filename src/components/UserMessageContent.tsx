@@ -4,16 +4,30 @@ import { Image } from "antd";
 import { ImageOff } from "lucide-react";
 
 import { formatImageAttachmentBytes } from "../lib/image-attachments";
+import type { ImageActionSource } from "../lib/image-actions";
 import { loadGeneratedImage } from "../lib/studio-db";
 import type { MessageImageAttachment, UserMessage } from "../types";
 import { colors, motion, radii, shadows } from "../styles/tokens.stylex";
+import ImageContextMenu from "./ImageContextMenu";
 
 interface ResolvedAttachment {
   attachment: MessageImageAttachment;
   url: string | null;
 }
 
-export default function UserMessageContent({ message }: { message: UserMessage }) {
+interface UserMessageContentProps {
+  message: UserMessage;
+  onCopyImage: (source: ImageActionSource) => void | Promise<void>;
+  onDownloadImage: (source: ImageActionSource) => void | Promise<void>;
+  onImageSourceReady: (source: ImageActionSource) => void;
+}
+
+export default function UserMessageContent({
+  message,
+  onCopyImage,
+  onDownloadImage,
+  onImageSourceReady,
+}: UserMessageContentProps) {
   const [resolved, setResolved] = useState<ResolvedAttachment[]>(() =>
     (message.attachments ?? []).map((attachment) => ({ attachment, url: null })),
   );
@@ -51,14 +65,37 @@ export default function UserMessageContent({ message }: { message: UserMessage }
     };
   }, [message.attachments]);
 
+  useEffect(() => {
+    for (const { attachment, url } of resolved) {
+      if (!url) {
+        continue;
+      }
+
+      onImageSourceReady({
+        url,
+        fileName: attachment.name,
+        mimeType: attachment.mimeType,
+      });
+    }
+  }, [onImageSourceReady, resolved]);
+
   return (
     <div {...stylex.props(styles.content)}>
       {resolved.length > 0 ? (
         <div {...stylex.props(styles.attachments)} aria-label="参考图片">
           {resolved.map(({ attachment, url }) => (
             <figure key={attachment.id} {...stylex.props(styles.attachment)}>
-              <div {...stylex.props(styles.thumbnail)}>
-                {url ? (
+              {url ? (
+                <ImageContextMenu
+                  source={{
+                    url,
+                    fileName: attachment.name,
+                    mimeType: attachment.mimeType,
+                  }}
+                  onCopy={onCopyImage}
+                  onDownload={onDownloadImage}
+                >
+                  <div {...stylex.props(styles.thumbnail)}>
                   <Image
                     src={url}
                     alt={attachment.name}
@@ -67,12 +104,15 @@ export default function UserMessageContent({ message }: { message: UserMessage }
                     style={{ display: "block", objectFit: "cover" }}
                     preview={{ mask: "查看" }}
                   />
-                ) : (
+                  </div>
+                </ImageContextMenu>
+              ) : (
+                <div {...stylex.props(styles.thumbnail)}>
                   <span {...stylex.props(styles.missing)} title="本地图片已不可用">
                     <ImageOff size={18} aria-hidden="true" />
                   </span>
-                )}
-              </div>
+                </div>
+              )}
               <figcaption title={attachment.name} {...stylex.props(styles.caption)}>
                 <span {...stylex.props(styles.captionName)}>{attachment.name}</span>
                 <small>{formatImageAttachmentBytes(attachment.size)}</small>

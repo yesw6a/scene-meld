@@ -25,7 +25,13 @@ import {
   resolveMessageImageAttachments,
 } from "./lib/image-attachments";
 import { endpointHostLabel } from "./lib/image-endpoint";
-import { saveImageBlob } from "./lib/image-save";
+import {
+  copyImageFromUrl,
+  downloadImageBlob,
+  downloadImageFromUrl,
+  generatedImageFileName,
+  type ImageActionSource,
+} from "./lib/image-actions";
 import {
   loadNavigationCollapsed,
   saveNavigationCollapsed,
@@ -42,7 +48,6 @@ import {
   connectionPresentation,
   countGenerations,
   createInitialWorkspace,
-  mimeExtension,
   missingAttachmentMessage,
 } from "./lib/studio-presenters";
 import {
@@ -127,15 +132,6 @@ export default function StudioApp() {
       (total, conversation) => total + countGenerations(conversation),
       0,
     ) ?? 0;
-
-  useEffect(() => {
-    const preventNativeContextMenu = (event: MouseEvent) => {
-      event.preventDefault();
-    };
-
-    window.addEventListener("contextmenu", preventNativeContextMenu);
-    return () => window.removeEventListener("contextmenu", preventNativeContextMenu);
-  }, []);
 
   useEffect(() => {
     if (initializationStarted.current) {
@@ -512,6 +508,26 @@ export default function StudioApp() {
     }
   };
 
+  const handleCopyImage = async (source: ImageActionSource) => {
+    try {
+      await copyImageFromUrl(source);
+      toast.success("图片已复制。");
+    } catch {
+      toast.error("图片复制失败，请使用下载图片。");
+    }
+  };
+
+  const handleDownloadImage = async (source: ImageActionSource) => {
+    try {
+      const result = await downloadImageFromUrl(source);
+      if (result === "saved") {
+        toast.success("图片已保存。");
+      }
+    } catch {
+      toast.error("无法读取本地图片，请重新生成或重试。");
+    }
+  };
+
   const handleDownload = async (item: AssistantMessage) => {
     try {
       const blob = item.imageDataUrl
@@ -524,8 +540,11 @@ export default function StudioApp() {
         throw new Error("missing image");
       }
 
-      const fileName = `scenemeld-${new Date(item.createdAt).toISOString().replace(/[:.]/g, "-")}.${mimeExtension(item.mimeType)}`;
-      const result = await saveImageBlob(blob, fileName, item.mimeType ?? "image/png");
+      const result = await downloadImageBlob(
+        blob,
+        generatedImageFileName(item.createdAt, item.mimeType),
+        item.mimeType,
+      );
       if (result === "saved") {
         toast.success("图片已保存。");
       }
@@ -737,7 +756,9 @@ export default function StudioApp() {
               conversationId={activeConversation.id}
               messages={activeConversation.messages}
               onCopy={handleCopy}
+              onCopyImage={handleCopyImage}
               onDownload={handleDownload}
+              onDownloadImage={handleDownloadImage}
               onRegenerate={handleRegenerate}
               onEditPrompt={handleEditPrompt}
               onContinueEditing={handleContinueEditing}

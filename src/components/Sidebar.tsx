@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import * as stylex from "@stylexjs/stylex";
-import { App as AntdApp, Dropdown, Tooltip } from "antd";
-import type { MenuProps } from "antd";
+import { App as AntdApp, Tooltip } from "antd";
 import {
   MessageSquare,
   PanelLeftClose,
@@ -12,6 +11,8 @@ import {
 } from "lucide-react";
 
 import BrandMark from "./BrandMark";
+import type { ContextMenuEntry } from "./AppContextMenu";
+import ContextMenuTarget from "./ContextMenuTarget";
 import WorkspaceTools from "./WorkspaceTools";
 import {
   MAX_CONVERSATION_TITLE_LENGTH,
@@ -136,35 +137,27 @@ export default function Sidebar({
   const conversationActions = (
     conversation: Conversation,
     deleteDisabled: boolean,
-  ): MenuProps => {
-    return {
-      items: [
-        {
-          key: "rename",
-          icon: <Pencil size={16} aria-hidden="true" />,
-          label: "重命名",
-        },
-        { type: "divider" },
-        {
-        key: "delete",
-        danger: true,
-        disabled: deleteDisabled,
-        icon: <Trash2 size={16} aria-hidden="true" />,
-        label: "删除",
-        },
-      ],
-      onClick: ({ key }) => {
-        if (key === "rename") {
-          startRename(conversation);
-          return;
-        }
-
-        if (key === "delete" && !deleteDisabled) {
+  ): ContextMenuEntry[] => [
+    {
+      key: "rename",
+      icon: <Pencil size={16} aria-hidden="true" />,
+      label: "重命名",
+      onSelect: () => startRename(conversation),
+    },
+    { type: "divider" },
+    {
+      key: "delete",
+      danger: true,
+      disabled: deleteDisabled,
+      icon: <Trash2 size={16} aria-hidden="true" />,
+      label: "删除",
+      onSelect: () => {
+        if (!deleteDisabled) {
           confirmDelete(conversation);
         }
       },
-    };
-  };
+    },
+  ];
 
   return (
     <aside
@@ -317,9 +310,6 @@ export default function Sidebar({
                 isActive && styles.itemRowActive,
                 navigationCollapsed && styles.itemRowCollapsed,
               )}
-              onContextMenu={() => {
-                actionTriggerRef.current = null;
-              }}
             >
               {navigationCollapsed ? (
                 <Tooltip title={conversation.title} placement="right">
@@ -335,14 +325,9 @@ export default function Sidebar({
           return isRenaming ? (
             <div key={conversation.id}>{row}</div>
           ) : (
-            <Dropdown
-              key={conversation.id}
-              menu={conversationMenu}
-              trigger={["contextMenu"]}
-              placement="bottomLeft"
-            >
+            <ContextMenuTarget key={conversation.id} entries={conversationMenu}>
               {row}
-            </Dropdown>
+            </ContextMenuTarget>
           );
         })}
       </nav>

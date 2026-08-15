@@ -8,15 +8,28 @@ import {
   imagePreviewSizingFromDimensions,
   imageSizeLabel,
 } from "../lib/image-sizes";
+import {
+  generatedImageFileName,
+  type ImageActionSource,
+} from "../lib/image-actions";
 import { loadGeneratedImage } from "../lib/studio-db";
 import type { AssistantMessage } from "../types";
 import { colors, motion, radii, shadows } from "../styles/tokens.stylex";
+import ImageContextMenu from "./ImageContextMenu";
 
 interface ImageResultCardProps {
   message: AssistantMessage;
+  onCopyImage: (source: ImageActionSource) => void | Promise<void>;
+  onDownloadImage: (source: ImageActionSource) => void | Promise<void>;
+  onImageSourceReady: (source: ImageActionSource) => void;
 }
 
-export default function ImageResultCard({ message }: ImageResultCardProps) {
+export default function ImageResultCard({
+  message,
+  onCopyImage,
+  onDownloadImage,
+  onImageSourceReady,
+}: ImageResultCardProps) {
   const [imageUrl, setImageUrl] = useState<string | null>(message.imageDataUrl ?? null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [previewSizing, setPreviewSizing] = useState(() =>
@@ -68,13 +81,34 @@ export default function ImageResultCard({ message }: ImageResultCardProps) {
     };
   }, [message.imageDataUrl, message.imageId]);
 
+  useEffect(() => {
+    if (!imageUrl) {
+      return;
+    }
+
+    onImageSourceReady({
+      url: imageUrl,
+      fileName: generatedImageFileName(message.createdAt, message.mimeType),
+      mimeType: message.mimeType,
+    });
+  }, [imageUrl, message.createdAt, message.mimeType, onImageSourceReady]);
+
   return (
     <article {...stylex.props(styles.card)} aria-label="生成的图片">
-      <div
-        {...stylex.props(styles.imageFrame)}
-        style={previewSizingStyle(previewSizing)}
-      >
-        {imageUrl ? (
+      {imageUrl ? (
+        <ImageContextMenu
+          source={{
+            url: imageUrl,
+            fileName: generatedImageFileName(message.createdAt, message.mimeType),
+            mimeType: message.mimeType,
+          }}
+          onCopy={onCopyImage}
+          onDownload={onDownloadImage}
+        >
+          <div
+            {...stylex.props(styles.imageFrame)}
+            style={previewSizingStyle(previewSizing)}
+          >
           <Image
             src={imageUrl}
             alt="生成结果图片"
@@ -90,7 +124,13 @@ export default function ImageResultCard({ message }: ImageResultCardProps) {
               setPreviewSizing(nextSizing);
             }}
           />
-        ) : (
+          </div>
+        </ImageContextMenu>
+      ) : (
+        <div
+          {...stylex.props(styles.imageFrame)}
+          style={previewSizingStyle(previewSizing)}
+        >
           <div
             {...stylex.props(styles.imagePlaceholder, loadFailed && styles.imageError)}
             role={loadFailed ? "alert" : "status"}
@@ -98,8 +138,8 @@ export default function ImageResultCard({ message }: ImageResultCardProps) {
             {loadFailed ? <AlertCircle size={24} aria-hidden="true" /> : <Spin />}
             <span>{loadFailed ? "无法读取本地图片" : "正在读取本地图片..."}</span>
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div {...stylex.props(styles.meta)}>
         <div {...stylex.props(styles.chips)}>

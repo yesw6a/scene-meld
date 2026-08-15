@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.5.0 (2026-08-16)
+
+### 📦 Version
+
+- 项目版本从 `1.4.0` 升级到 `1.5.0`。
+- `package.json`、Tauri 配置、Rust crate 与 Cargo lockfile 版本统一为 `1.5.0`。
+
+### 🎉 Added
+
+- 新增全局受控右键菜单：文本选择可复制，编辑控件支持剪切、复制、粘贴和全选，会话提供重命名与删除操作。
+- 生成图片和参考图片新增右键“复制图片”“下载图片”，放大预览工具栏也提供相同操作。
+
+### 🔄 Changed
+
+- 图片放大预览的底部工具栏适配安全区域和窄视口，保留现有变换操作并确保操作栏可见。
+
+### 🐛 Fixed
+
+- 修复右键菜单打开后无法通过菜单外左键关闭的问题；按 `Escape` 也可关闭菜单，且不会阻断目标点击。
+
+### ✅ Verify
+
+- `pnpm.cmd typecheck` 通过。
+- `pnpm.cmd build` 通过；Vite 保留主包超过 500 kB 的非阻塞提示。
+- `git diff --check` 通过。
+- `cargo check --manifest-path src-tauri/Cargo.toml` 未能在当前 Cygwin Rust 目标完成：Tauri 的 `tao`/`wry` 不支持该平台；Cargo 已在进入平台相关编译前将 `Cargo.lock` 中的 SceneMeld 版本同步为 `1.5.0`。
+
 ## v1.4.0 (2026-08-15)
 
 ### 📦 Version

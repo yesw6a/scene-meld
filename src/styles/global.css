@@ -252,6 +252,145 @@ button,
   }
 }
 
+.studio-image-context-target {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.studio-context-menu-target {
+  display: contents;
+}
+
+.studio-context-menu-anchor {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+
+.studio-context-menu .ant-dropdown-menu-item {
+  min-height: 40px;
+}
+
+.studio-context-menu .ant-dropdown-menu-item:focus-visible {
+  outline: 2px solid var(--app-ink);
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .studio-context-menu .ant-dropdown-menu-item {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .studio-context-menu .ant-dropdown-menu-item {
+    transition: none;
+  }
+}
+
+.studio-image-preview .ant-image-preview-img {
+  max-height: min(70vh, calc(100dvh - 144px));
+}
+
+.studio-image-preview-footer.ant-image-preview-footer {
+  bottom: max(18px, env(safe-area-inset-bottom)) !important;
+  width: min(calc(100vw - 32px), 680px);
+  max-width: calc(100vw - 32px);
+  gap: 8px;
+}
+
+.studio-image-preview-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  color: #f8fbff;
+  background: rgb(9 15 24 / 96%);
+  border: 1px solid rgb(255 255 255 / 24%);
+  border-radius: 12px;
+  box-shadow: 0 16px 38px rgb(0 0 0 / 42%);
+}
+
+.studio-image-preview-transform-actions.ant-image-preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 0;
+  background: transparent;
+}
+
+.studio-image-preview-action,
+.studio-image-preview-transform-actions > button {
+  display: grid;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  place-items: center;
+}
+
+.studio-image-preview-action:hover,
+.studio-image-preview-transform-actions > button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 14%);
+}
+
+.studio-image-preview-action:active,
+.studio-image-preview-transform-actions > button:active:not(:disabled) {
+  background: rgb(255 255 255 / 20%);
+  transform: scale(0.96);
+}
+
+.studio-image-preview-action:focus-visible,
+.studio-image-preview-transform-actions > button:focus-visible {
+  outline: 2px solid #7dc6ff;
+  outline-offset: 2px;
+}
+
+.studio-image-preview-transform-actions > button:disabled {
+  cursor: default;
+  opacity: 0.42;
+}
+
+.studio-image-preview-separator {
+  width: 1px;
+  height: 20px;
+  margin: 0 2px;
+  background: rgb(255 255 255 / 20%);
+}
+
+@media (max-width: 767px) {
+  .studio-image-preview .ant-image-preview-img {
+    max-height: min(66vh, calc(100dvh - 164px));
+  }
+
+  .studio-image-preview-footer.ant-image-preview-footer {
+    bottom: max(12px, env(safe-area-inset-bottom)) !important;
+    width: calc(100vw - 20px);
+    max-width: calc(100vw - 20px);
+  }
+
+  .studio-image-preview-toolbar {
+    gap: 2px;
+    padding: 5px;
+  }
+
+  .studio-image-preview-action,
+  .studio-image-preview-transform-actions > button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+}
+
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .studio-glass-drawer .ant-drawer-content,
   .ant-modal-root .ant-modal-container,

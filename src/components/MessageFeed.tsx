@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useRef,
   type CSSProperties,
@@ -19,6 +20,7 @@ import {
   WandSparkles,
 } from "lucide-react";
 
+import type { ImageActionSource } from "../lib/image-actions";
 import { imagePreviewSizing } from "../lib/image-sizes";
 import type { AssistantMessage, ChatMessage, UserMessage } from "../types";
 import { colors, materials, motion, radii, shadows } from "../styles/tokens.stylex";
@@ -30,7 +32,9 @@ interface MessageFeedProps {
   messages: ChatMessage[];
   busy: boolean;
   onCopy: (text: string) => void;
+  onCopyImage: (source: ImageActionSource) => void | Promise<void>;
   onDownload: (message: AssistantMessage) => void | Promise<void>;
+  onDownloadImage: (source: ImageActionSource) => void | Promise<void>;
   onRegenerate: (message: AssistantMessage, source?: UserMessage) => void;
   onEditPrompt: (message: UserMessage) => void;
   onContinueEditing: (message: AssistantMessage) => void;
@@ -55,15 +59,29 @@ export default function MessageFeed({
   messages,
   busy,
   onCopy,
+  onCopyImage,
   onDownload,
+  onDownloadImage,
   onRegenerate,
   onEditPrompt,
   onContinueEditing,
   onDelete,
 }: MessageFeedProps) {
   const endRef = useRef<HTMLDivElement>(null);
+  const imageSourceRegistry = useRef<{
+    conversationId: string;
+    sources: Map<string, ImageActionSource>;
+  }>({ conversationId, sources: new Map() });
   const lastMessage = messages.at(-1);
   const turns = groupMessageTurns(messages);
+
+  if (imageSourceRegistry.current.conversationId !== conversationId) {
+    imageSourceRegistry.current = { conversationId, sources: new Map() };
+  }
+
+  const registerImageSource = useCallback((source: ImageActionSource) => {
+    imageSourceRegistry.current.sources.set(source.url, source);
+  }, []);
 
   useEffect(() => {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -75,7 +93,38 @@ export default function MessageFeed({
       <div {...stylex.props(styles.list)}>
         <Image.PreviewGroup
           key={conversationId}
-          preview={{ countRender: (current, total) => `第 ${current} / ${total} 张` }}
+          classNames={{
+            popup: {
+              root: "studio-image-preview",
+              footer: "studio-image-preview-footer",
+              actions: "studio-image-preview-transform-actions",
+            },
+          }}
+          preview={{
+            countRender: (current, total) => `第 ${current} / ${total} 张`,
+            actionsRender: (originalNode, info) => {
+              const source =
+                imageSourceRegistry.current.sources.get(info.image.url) ??
+                fallbackImageActionSource(info.image.url);
+
+              return (
+                <div className="studio-image-preview-toolbar">
+                  <PreviewImageActionButton
+                    icon={<Copy size={17} aria-hidden="true" />}
+                    label="复制图片"
+                    onClick={() => onCopyImage(source)}
+                  />
+                  <PreviewImageActionButton
+                    icon={<Download size={17} aria-hidden="true" />}
+                    label="下载图片"
+                    onClick={() => onDownloadImage(source)}
+                  />
+                  <span className="studio-image-preview-separator" aria-hidden="true" />
+                  {originalNode}
+                </div>
+              );
+            },
+          }}
         >
           {turns.map((turn) => (
             <section key={turn.id} {...stylex.props(styles.turn)} aria-label="一轮图片生成对话">
@@ -85,7 +134,14 @@ export default function MessageFeed({
                     placement="end"
                     shape="corner"
                     variant="filled"
-                    content={<UserMessageContent message={turn.user} />}
+                    content={
+                      <UserMessageContent
+                        message={turn.user}
+                        onCopyImage={onCopyImage}
+                        onDownloadImage={onDownloadImage}
+                        onImageSourceReady={registerImageSource}
+                      />
+                    }
                     footerPlacement="outer-end"
                     footer={
                       <UserMessageActions
@@ -110,7 +166,10 @@ export default function MessageFeed({
                   message={turn.assistant}
                   messageIds={turn.messageIds}
                   busy={busy}
+                  onCopyImage={onCopyImage}
                   onDownload={onDownload}
+                  onDownloadImage={onDownloadImage}
+                  onImageSourceReady={registerImageSource}
                   onRegenerate={onRegenerate}
                   onContinueEditing={onContinueEditing}
                   onDelete={onDelete}
@@ -177,7 +236,10 @@ function AssistantMessageView({
   message,
   messageIds,
   busy,
+  onCopyImage,
   onDownload,
+  onDownloadImage,
+  onImageSourceReady,
   onRegenerate,
   onContinueEditing,
   onDelete,
@@ -188,6 +250,7 @@ function AssistantMessageView({
 > & {
   message: AssistantMessage;
   messageIds: string[];
+  onImageSourceReady: (source: ImageActionSource) => void;
   source?: UserMessage;
 }) {
   return (
@@ -195,7 +258,14 @@ function AssistantMessageView({
       <Bubble<ReactNode>
         placement="start"
         variant="borderless"
-        content={<AssistantMessageContent message={message} />}
+        content={
+          <AssistantMessageContent
+            message={message}
+            onCopyImage={onCopyImage}
+            onDownloadImage={onDownloadImage}
+            onImageSourceReady={onImageSourceReady}
+          />
+        }
         footerPlacement="outer-start"
         footer={
           <AssistantMessageActions
@@ -219,7 +289,15 @@ function AssistantMessageView({
   );
 }
 
-function AssistantMessageContent({ message }: { message: AssistantMessage }) {
+function AssistantMessageContent({
+  message,
+  onCopyImage,
+  onDownloadImage,
+  onImageSourceReady,
+}: Pick<MessageFeedProps, "onCopyImage" | "onDownloadImage"> & {
+  message: AssistantMessage;
+  onImageSourceReady: (source: ImageActionSource) => void;
+}) {
   if (message.status === "loading") {
     const previewSizing = imagePreviewSizing(message.request.size);
 
@@ -263,7 +341,43 @@ function AssistantMessageContent({ message }: { message: AssistantMessage }) {
     );
   }
 
-  return <ImageResultCard message={message} />;
+  return (
+    <ImageResultCard
+      message={message}
+      onCopyImage={onCopyImage}
+      onDownloadImage={onDownloadImage}
+      onImageSourceReady={onImageSourceReady}
+    />
+  );
+}
+
+function PreviewImageActionButton({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void | Promise<void>;
+}) {
+  return (
+    <button
+      type="button"
+      className="studio-image-preview-action"
+      aria-label={label}
+      title={label}
+      onClick={() => void onClick()}
+    >
+      {icon}
+    </button>
+  );
+}
+
+function fallbackImageActionSource(url: string): ImageActionSource {
+  return {
+    url,
+    fileName: `scenemeld-image-${Date.now()}.png`,
+  };
 }
 
 function AssistantMessageActions({

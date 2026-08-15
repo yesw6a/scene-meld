@@ -1,6 +1,6 @@
 {
   "name": "scenemeld",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "A conversational image workspace for user-configured compatible endpoints.",
   "private": true,
   "license": "MIT",
