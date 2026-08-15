@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.4.0 (2026-08-15)
+
+### 📦 Version
+
+- 项目版本从 `1.3.1` 升级到 `1.4.0`。
+- `package.json`、Tauri 配置、Rust crate 与 Cargo lockfile 版本统一为 `1.4.0`。
+
+### 🎉 Added
+
+- 新增会话重命名：侧栏提供快捷按钮和右键菜单，支持 Enter 保存、Escape 取消及中文输入法组合输入。
+- 新增会话自动/手动标题模式；已有本地会话保留原有标题，手动重命名不会被后续消息覆盖。
+
+### 🔄 Changed
+
+- 更新 Web favicon、应用内品牌图标与各桌面平台包图标资源。
+- Vite 开发服务器忽略 `src-tauri/target`，避免桌面构建输出触发无关的文件监听更新。
+
+### 🐛 Fixed
+
+- 将 GitHub Actions 的 Intel macOS runner 从不可用的 `macos-13` 迁移至 `macos-15-intel`，恢复跨平台桌面 CI 与发布构建调度。
+
+### ✅ Verify
+
+- `pnpm.cmd run check` 通过。
+- `pnpm.cmd run build` 通过；Vite 保留主包超过 500 kB 的非阻塞提示。
+- 使用 Rust `1.88.0` 运行 `cargo check --manifest-path src-tauri/Cargo.toml` 通过；`Cargo.lock` 已由 Cargo 同步。
+
 ## v1.3.1 (2026-08-15)
 
 ### 📦 Version

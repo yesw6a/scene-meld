@@ -22,7 +22,8 @@ type StoredUserMessage = Omit<UserMessage, "attachments"> & {
 };
 type StoredChatMessage = StoredUserMessage | StoredAssistantMessage;
 
-interface StoredConversation extends Omit<Conversation, "messages"> {
+interface StoredConversation extends Omit<Conversation, "messages" | "titleMode"> {
+  titleMode?: Conversation["titleMode"];
   messages: StoredChatMessage[];
 }
 
@@ -187,6 +188,7 @@ function toStoredConversation(conversation: Conversation): StoredConversation {
 }
 
 function restoreConversation(conversation: StoredConversation): Conversation {
+  const titleMode = conversation.titleMode ?? "manual";
   let interrupted = false;
   const messages = conversation.messages.map((message): ChatMessage => {
     if (message.type !== "assistant" || message.status !== "loading") {
@@ -203,10 +205,14 @@ function restoreConversation(conversation: StoredConversation): Conversation {
 
   return {
     ...conversation,
-    title: restoreLegacyConversationTitle(
-      conversation.title,
-      messages.find((message) => message.type === "user")?.prompt,
-    ),
+    titleMode,
+    title:
+      titleMode === "auto"
+        ? restoreLegacyConversationTitle(
+            conversation.title,
+            messages.find((message) => message.type === "user")?.prompt,
+          )
+        : conversation.title,
     messages,
     updatedAt: interrupted ? Date.now() : conversation.updatedAt,
   };

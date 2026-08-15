@@ -10,13 +10,15 @@ import Sidebar from "./components/Sidebar";
 import StudioHeader from "./components/StudioHeader";
 import WelcomePanel from "./components/WelcomePanel";
 import useConversationDeletion from "./hooks/useConversationDeletion";
+import useConversationRenaming from "./hooks/useConversationRenaming";
 import useImageDrafts from "./hooks/useImageDrafts";
 import useDesktopUpdater from "./hooks/useDesktopUpdater";
 import { requestEditedImage, requestGeneratedImage } from "./lib/api";
 import {
   createConversation,
   createId,
-  promptToTitle,
+  titleForMessages,
+  titleForSubmittedPrompt,
 } from "./lib/conversations";
 import {
   prepareImageAttachments,
@@ -119,11 +121,21 @@ export default function StudioApp() {
     workspace, requestBusy: isGenerating || Boolean(abortRef.current), setWorkspace, setDraft,
     clearDraftImages, closeNavigation: () => setNavigationOpen(false), toast,
   });
+  const handleRenameConversation = useConversationRenaming({ setWorkspace });
   const totalGenerations =
     workspace?.conversations.reduce(
       (total, conversation) => total + countGenerations(conversation),
       0,
     ) ?? 0;
+
+  useEffect(() => {
+    const preventNativeContextMenu = (event: MouseEvent) => {
+      event.preventDefault();
+    };
+
+    window.addEventListener("contextmenu", preventNativeContextMenu);
+    return () => window.removeEventListener("contextmenu", preventNativeContextMenu);
+  }, []);
 
   useEffect(() => {
     if (initializationStarted.current) {
@@ -272,8 +284,7 @@ export default function StudioApp() {
 
       updateConversation(conversationId, (conversation) => ({
         ...conversation,
-        title:
-          conversation.messages.length === 0 ? promptToTitle(prompt) : conversation.title,
+        title: titleForSubmittedPrompt(conversation, prompt),
         messages: [
           ...conversation.messages,
           {
@@ -616,10 +627,9 @@ export default function StudioApp() {
         }
       }
 
-      const firstPrompt = messages.find((message) => message.type === "user")?.prompt;
       const updatedConversation: Conversation = {
         ...target,
-        title: firstPrompt ? promptToTitle(firstPrompt) : "新创作",
+        title: titleForMessages(target, messages),
         messages,
         updatedAt: Date.now(),
       };
@@ -670,6 +680,7 @@ export default function StudioApp() {
   const sharedSidebarProps = {
     onCreate: handleCreateConversation,
     onDelete: handleDeleteConversation,
+    onRename: handleRenameConversation,
     onOpenData: openDataSettings,
     onOpenAppearance: openAppearanceSettings,
     onOpenAbout: openAbout,

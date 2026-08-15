@@ -1,15 +1,22 @@
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import * as stylex from "@stylexjs/stylex";
-import { App as AntdApp, Tooltip } from "antd";
+import { App as AntdApp, Dropdown, Tooltip } from "antd";
+import type { MenuProps } from "antd";
 import {
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Plus,
   Trash2,
 } from "lucide-react";
 
 import BrandMark from "./BrandMark";
 import WorkspaceTools from "./WorkspaceTools";
+import {
+  MAX_CONVERSATION_TITLE_LENGTH,
+  normalizeConversationTitle,
+} from "../lib/conversations";
 import type { Conversation } from "../types";
 import { colors, materials, motion, radii, shadows } from "../styles/tokens.stylex";
 
@@ -26,6 +33,7 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
+  onRename: (id: string, title: string) => void;
   onOpenData?: () => void;
   onOpenAppearance?: () => void;
   onOpenAbout?: () => void;
@@ -44,12 +52,30 @@ export default function Sidebar({
   onSelect,
   onCreate,
   onDelete,
+  onRename,
   onOpenData,
   onOpenAppearance,
   onOpenAbout,
 }: SidebarProps) {
   const navigationCollapsed = collapsed && !embedded;
   const { modal } = AntdApp.useApp();
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameTitle, setRenameTitle] = useState("");
+  const [isComposing, setIsComposing] = useState(false);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+  const actionTriggerRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!renamingId) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      renameInputRef.current?.focus();
+      renameInputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [renamingId]);
 
   const confirmDelete = (conversation: Conversation) => {
     modal.confirm({
@@ -64,6 +90,82 @@ export default function Sidebar({
     });
   };
 
+  const finishRename = () => {
+    const actionTrigger = actionTriggerRef.current;
+    actionTriggerRef.current = null;
+    setRenamingId(null);
+    setRenameTitle("");
+    setIsComposing(false);
+    window.requestAnimationFrame(() => actionTrigger?.focus());
+  };
+
+  const startRename = (
+    conversation: Conversation,
+    actionTrigger: HTMLButtonElement | null = null,
+  ) => {
+    actionTriggerRef.current = actionTrigger;
+    setRenamingId(conversation.id);
+    setRenameTitle(conversation.title);
+    setIsComposing(false);
+  };
+
+  const saveRename = (conversation: Conversation) => {
+    const title = normalizeConversationTitle(renameTitle);
+    if (title && title !== conversation.title) {
+      onRename(conversation.id, title);
+    }
+    finishRename();
+  };
+
+  const handleRenameKeyDown = (
+    event: KeyboardEvent<HTMLInputElement>,
+    conversation: Conversation,
+  ) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      finishRename();
+      return;
+    }
+
+    if (event.key === "Enter" && !isComposing && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      saveRename(conversation);
+    }
+  };
+
+  const conversationActions = (
+    conversation: Conversation,
+    deleteDisabled: boolean,
+  ): MenuProps => {
+    return {
+      items: [
+        {
+          key: "rename",
+          icon: <Pencil size={16} aria-hidden="true" />,
+          label: "重命名",
+        },
+        { type: "divider" },
+        {
+        key: "delete",
+        danger: true,
+        disabled: deleteDisabled,
+        icon: <Trash2 size={16} aria-hidden="true" />,
+        label: "删除",
+        },
+      ],
+      onClick: ({ key }) => {
+        if (key === "rename") {
+          startRename(conversation);
+          return;
+        }
+
+        if (key === "delete" && !deleteDisabled) {
+          confirmDelete(conversation);
+        }
+      },
+    };
+  };
+
   return (
     <aside
       {...stylex.props(
@@ -76,7 +178,7 @@ export default function Sidebar({
       <div {...stylex.props(styles.brand, navigationCollapsed && styles.brandCollapsed)}>
         <div {...stylex.props(styles.brandIdentity)}>
           <span {...stylex.props(styles.brandMark)} aria-hidden="true">
-            <BrandMark size={23} animated />
+            <BrandMark size={34} />
           </span>
           {!navigationCollapsed ? (
             <span {...stylex.props(styles.brandCopy)}>
@@ -127,9 +229,47 @@ export default function Sidebar({
       <nav {...stylex.props(styles.list, navigationCollapsed && styles.listCollapsed)}>
         {conversations.map((conversation) => {
           const isActive = conversation.id === activeId;
+          const isRenaming = conversation.id === renamingId;
           const isSoleEmptyConversation =
             conversations.length === 1 && conversation.messages.length === 0;
-          const selectButton = (
+          const deleteDisabled = deletionDisabled || isSoleEmptyConversation;
+          const deleteTooltip = deletionDisabled
+            ? (deletionDisabledReason ?? "请先等待当前图片生成完成，或停止生成。")
+            : isSoleEmptyConversation
+              ? "至少保留一个空白会话"
+              : `删除“${conversation.title}”`;
+          const conversationMenu = conversationActions(
+            conversation,
+            deleteDisabled,
+          );
+          const conversationIcon = (
+            <span
+              {...stylex.props(
+                styles.conversationIcon,
+                isActive && styles.conversationIconActive,
+              )}
+              aria-hidden="true"
+            >
+              <MessageSquare size={20} strokeWidth={2} />
+            </span>
+          );
+          const selectButton = isRenaming ? (
+            <div {...stylex.props(styles.renameField)}>
+              {conversationIcon}
+              <input
+                ref={renameInputRef}
+                {...stylex.props(styles.renameInput)}
+                value={renameTitle}
+                maxLength={MAX_CONVERSATION_TITLE_LENGTH}
+                aria-label={`重命名会话：${conversation.title}`}
+                onChange={(event) => setRenameTitle(event.target.value)}
+                onBlur={() => saveRename(conversation)}
+                onKeyDown={(event) => handleRenameKeyDown(event, conversation)}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={() => setIsComposing(false)}
+              />
+            </div>
+          ) : (
             <button
               type="button"
               {...stylex.props(styles.item, navigationCollapsed && styles.itemCollapsed)}
@@ -137,21 +277,49 @@ export default function Sidebar({
               aria-label={navigationCollapsed ? conversation.title : undefined}
               onClick={() => onSelect(conversation.id)}
             >
-              <MessageSquare size={17} aria-hidden="true" strokeWidth={1.7} />
+              {conversationIcon}
               {!navigationCollapsed ? (
                 <span {...stylex.props(styles.itemTitle)}>{conversation.title}</span>
               ) : null}
-            </button>
+              </button>
           );
-
-          return (
+          const directActions = !navigationCollapsed && !isRenaming ? (
+            <div {...stylex.props(styles.actions)}>
+              <Tooltip title={`重命名“${conversation.title}”`} placement="right">
+                <button
+                  type="button"
+                  {...stylex.props(styles.actionButton)}
+                  aria-label={`重命名会话：${conversation.title}`}
+                  onClick={(event) => startRename(conversation, event.currentTarget)}
+                >
+                  <Pencil size={17} aria-hidden="true" />
+                </button>
+              </Tooltip>
+              <Tooltip title={deleteTooltip} placement="right">
+                <span {...stylex.props(styles.actionButtonWrapper)}>
+                  <button
+                    type="button"
+                    {...stylex.props(styles.actionButton, styles.deleteActionButton)}
+                    disabled={deleteDisabled}
+                    aria-label={`删除会话：${conversation.title}`}
+                    onClick={() => confirmDelete(conversation)}
+                  >
+                    <Trash2 size={17} aria-hidden="true" />
+                  </button>
+                </span>
+              </Tooltip>
+            </div>
+          ) : null;
+          const row = (
             <div
-              key={conversation.id}
               {...stylex.props(
                 styles.itemRow,
                 isActive && styles.itemRowActive,
                 navigationCollapsed && styles.itemRowCollapsed,
               )}
+              onContextMenu={() => {
+                actionTriggerRef.current = null;
+              }}
             >
               {navigationCollapsed ? (
                 <Tooltip title={conversation.title} placement="right">
@@ -160,32 +328,21 @@ export default function Sidebar({
               ) : (
                 selectButton
               )}
-              {!navigationCollapsed && !isSoleEmptyConversation ? (
-                <Tooltip
-                  title={
-                    deletionDisabled
-                      ? deletionDisabledReason
-                      : `删除“${conversation.title}”`
-                  }
-                  placement="right"
-                >
-                  <span {...stylex.props(styles.deleteAction)}>
-                    <button
-                      type="button"
-                      {...stylex.props(
-                        styles.deleteButton,
-                        embedded && styles.deleteButtonEmbedded,
-                      )}
-                      disabled={deletionDisabled}
-                      aria-label={`删除会话：${conversation.title}`}
-                      onClick={() => confirmDelete(conversation)}
-                    >
-                      <Trash2 size={16} aria-hidden="true" />
-                    </button>
-                  </span>
-                </Tooltip>
-              ) : null}
+              {directActions}
             </div>
+          );
+
+          return isRenaming ? (
+            <div key={conversation.id}>{row}</div>
+          ) : (
+            <Dropdown
+              key={conversation.id}
+              menu={conversationMenu}
+              trigger={["contextMenu"]}
+              placement="bottomLeft"
+            >
+              {row}
+            </Dropdown>
           );
         })}
       </nav>
@@ -269,9 +426,9 @@ const styles = stylex.create({
     flexShrink: 0,
     display: "grid",
     placeItems: "center",
-    color: colors.onPrimary,
-    backgroundColor: colors.primary,
-    borderRadius: radii.pill,
+    overflow: "hidden",
+    borderRadius: radii.medium,
+    boxShadow: shadows.subtle,
   },
   brandCopy: {
     minWidth: 0,
@@ -432,54 +589,106 @@ const styles = stylex.create({
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
   },
-  deleteAction: {
+  conversationIcon: {
+    width: "24px",
+    height: "24px",
     flexShrink: 0,
     display: "grid",
     placeItems: "center",
+    color: colors.muted,
   },
-  deleteButton: {
+  conversationIconActive: {
+    color: colors.primary,
+  },
+  renameField: {
+    minWidth: 0,
+    minHeight: "44px",
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "8px 6px 8px 10px",
+  },
+  renameInput: {
+    minWidth: 0,
+    width: "100%",
+    height: "30px",
+    padding: "0 8px",
+    color: colors.ink,
+    fontSize: "14px",
+    backgroundColor: colors.surfaceSoft,
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: colors.border,
+    borderRadius: radii.small,
+    outline: "none",
+    ":focus": {
+      borderColor: colors.primary,
+      boxShadow: shadows.focus,
+    },
+  },
+  actions: {
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+  },
+  actionButtonWrapper: {
+    display: "flex",
+  },
+  actionButton: {
     width: "44px",
     height: "44px",
     display: "grid",
     placeItems: "center",
-    color: colors.dangerOnDark,
+    flexShrink: 0,
+    color: colors.muted,
     backgroundColor: "transparent",
     borderWidth: 0,
     borderRadius: radii.small,
     cursor: "pointer",
-    opacity: 0.86,
     transitionProperty: "background-color, color, opacity, transform",
     transitionDuration: motion.fast,
     transitionTimingFunction: motion.easing,
     ":hover": {
-      color: colors.dangerOnDark,
-      backgroundColor: colors.dangerOnDarkSoft,
-      opacity: 1,
+      color: colors.ink,
+      backgroundColor: colors.glassSubtle,
     },
     ":active": {
-      backgroundColor: colors.dangerOnDarkSoft,
+      backgroundColor: colors.glassSubtle,
       transform: "scale(0.92)",
-      opacity: 1,
     },
     ":focus-visible": {
-      color: colors.dangerOnDark,
+      color: colors.ink,
       outlineWidth: "2px",
       outlineStyle: "solid",
       outlineColor: colors.focus,
       outlineOffset: "-2px",
-      opacity: 1,
     },
     ":disabled": {
-      opacity: 0.32,
+      opacity: 0.34,
       cursor: "not-allowed",
+      transform: "none",
     },
     "@media (prefers-reduced-motion: reduce)": {
       transitionDuration: "0ms",
       transform: "none",
     },
   },
-  deleteButtonEmbedded: {
-    width: "44px",
-    height: "44px",
+  deleteActionButton: {
+    ":hover": {
+      color: colors.dangerOnDark,
+      backgroundColor: colors.dangerOnDarkSoft,
+    },
+    ":active": {
+      color: colors.dangerOnDark,
+      backgroundColor: colors.dangerOnDarkSoft,
+    },
+    ":focus-visible": {
+      color: colors.dangerOnDark,
+    },
+    ":disabled": {
+      color: colors.muted,
+      backgroundColor: "transparent",
+    },
   },
 });

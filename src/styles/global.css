@@ -136,6 +136,25 @@ button,
   align-items: center;
 }
 
+.ant-dropdown .ant-dropdown-menu {
+  min-width: 156px;
+  padding: 6px;
+  color: var(--app-ink);
+  background: var(--app-glass-overlay) !important;
+  border: 1px solid var(--app-glass-border);
+  border-radius: 14px;
+  box-shadow:
+    var(--app-glass-shadow),
+    inset 0 1px 0 var(--app-glass-highlight) !important;
+  -webkit-backdrop-filter: blur(28px) saturate(165%);
+  backdrop-filter: blur(28px) saturate(165%);
+}
+
+.ant-dropdown .ant-dropdown-menu-item {
+  min-height: 36px;
+  border-radius: 8px;
+}
+
 .ant-modal-root .ant-modal-mask {
   background: var(--app-scrim) !important;
   -webkit-backdrop-filter: blur(8px);
@@ -237,6 +256,7 @@ button,
   .studio-glass-drawer .ant-drawer-content,
   .ant-modal-root .ant-modal-container,
   .ant-popover .ant-popover-container,
+  .ant-dropdown .ant-dropdown-menu,
   .ant-select-dropdown,
   .ant-message-notice-content,
   .ant-tooltip .ant-tooltip-container {
@@ -248,6 +268,7 @@ button,
   .studio-glass-drawer .ant-drawer-content,
   .ant-modal-root .ant-modal-container,
   .ant-popover .ant-popover-container,
+  .ant-dropdown .ant-dropdown-menu,
   .ant-select-dropdown,
   .ant-message-notice-content,
   .ant-tooltip .ant-tooltip-container {

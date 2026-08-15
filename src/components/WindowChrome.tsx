@@ -167,7 +167,7 @@ export default function WindowChrome({
       >
         <div {...stylex.props(styles.identity)}>
           <span {...stylex.props(styles.iconTile)} aria-hidden="true">
-            <BrandMark size={18} />
+            <BrandMark size={22} />
           </span>
           <strong {...stylex.props(styles.title)}>SceneMeld</strong>
         </div>
@@ -396,11 +396,9 @@ const styles = stylex.create({
     flexShrink: 0,
     display: "grid",
     placeItems: "center",
-    color: colors.primary,
-    backgroundColor: colors.primarySoft,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: colors.glassBorder,
+    overflow: "hidden",
+    backgroundColor: "transparent",
+    borderWidth: 0,
     borderRadius: radii.small,
   },
   title: {

@@ -74,9 +74,12 @@ export interface AssistantMessage {
 
 export type ChatMessage = UserMessage | AssistantMessage;
 
+export type ConversationTitleMode = "auto" | "manual";
+
 export interface Conversation {
   id: string;
   title: string;
+  titleMode: ConversationTitleMode;
   messages: ChatMessage[];
   createdAt: number;
   updatedAt: number;

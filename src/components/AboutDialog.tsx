@@ -64,7 +64,7 @@ export default function AboutDialog({
       <div {...stylex.props(styles.content)}>
         <div {...stylex.props(styles.brand)}>
           <span {...stylex.props(styles.mark)}>
-            <BrandMark size={34} title="SceneMeld" />
+            <BrandMark size={60} title="SceneMeld" />
           </span>
           <div {...stylex.props(styles.brandCopy)}>
             <Typography.Title level={3}>SceneMeld</Typography.Title>
@@ -145,9 +145,9 @@ const styles = stylex.create({
     flexShrink: 0,
     display: "grid",
     placeItems: "center",
-    color: colors.onPrimary,
-    backgroundColor: colors.primary,
-    borderRadius: radii.large,
+    overflow: "hidden",
+    borderRadius: radii.medium,
+    boxShadow: `0 1px 2px ${colors.glassBorder}`,
   },
   brandCopy: {
     minWidth: 0,

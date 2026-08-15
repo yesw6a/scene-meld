@@ -11,6 +11,11 @@ export default defineConfig(({ mode }) => ({
     }),
     react(),
   ],
+  server: {
+    watch: {
+      ignored: ["**/src-tauri/target/**"],
+    },
+  },
   build: {
     target: "es2022",
   },
