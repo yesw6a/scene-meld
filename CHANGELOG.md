@@ -19,10 +19,13 @@
 
 ### 🐛 Fixed
 
+- 修复参考图声明格式与二进制内容不一致时图生图请求被本地拒绝的问题；现在会根据 PNG、JPEG、WebP 或 GIF 文件头规范化图片类型，并在桌面端使用检测结果构造请求。
 - 将 GitHub Actions 的 Intel macOS runner 从不可用的 `macos-13` 迁移至 `macos-15-intel`，恢复跨平台桌面 CI 与发布构建调度。
 
 ### ✅ Verify
 
+- `pnpm.cmd run typecheck` 通过。
+- `cargo check --locked --manifest-path src-tauri/Cargo.toml` 通过。
 - `pnpm.cmd run check` 通过。
 - `pnpm.cmd run build` 通过；Vite 保留主包超过 500 kB 的非阻塞提示。
 - 使用 Rust `1.88.0` 运行 `cargo check --manifest-path src-tauri/Cargo.toml` 通过；`Cargo.lock` 已由 Cargo 同步。

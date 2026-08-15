@@ -4,6 +4,7 @@ import {
   loadGeneratedImage,
   saveGeneratedImage,
 } from "./studio-db";
+import { detectBlobImageMimeType } from "./image-mime";
 import type {
   AssistantMessage,
   DraftImageAttachment,
@@ -193,12 +194,18 @@ export async function prepareImageAttachments(
   let canPersist = persistAssets;
 
   for (const source of sources) {
-    const imageId = source.imageId ?? createId("input-image");
-    let persisted = source.persisted;
+    const normalizedSource = await normalizeImageAttachmentSource(source);
+    const imageId = normalizedSource.imageId ?? createId("input-image");
+    let persisted = normalizedSource.persisted;
 
     if (!persisted && canPersist) {
       try {
-        await saveGeneratedImage(imageId, source.blob, source.mimeType, createdAt);
+        await saveGeneratedImage(
+          imageId,
+          normalizedSource.blob,
+          normalizedSource.mimeType,
+          createdAt,
+        );
         persisted = true;
       } catch {
         persistenceFailed = true;
@@ -206,17 +213,35 @@ export async function prepareImageAttachments(
       }
     }
 
-    requestAttachments.push({ ...source, imageId, persisted });
+    requestAttachments.push({ ...normalizedSource, imageId, persisted });
     messageAttachments.push({
       id: imageId,
-      name: source.name,
-      mimeType: source.mimeType,
-      size: source.size,
-      ...(persisted ? {} : { blob: source.blob }),
+      name: normalizedSource.name,
+      mimeType: normalizedSource.mimeType,
+      size: normalizedSource.size,
+      ...(persisted ? {} : { blob: normalizedSource.blob }),
     });
   }
 
   return { messageAttachments, requestAttachments, persistenceFailed };
+}
+
+async function normalizeImageAttachmentSource(
+  source: ImageAttachmentSource,
+): Promise<ImageAttachmentSource> {
+  const detectedMimeType = await detectBlobImageMimeType(source.blob);
+  if (
+    !detectedMimeType ||
+    (source.mimeType === detectedMimeType && source.blob.type === detectedMimeType)
+  ) {
+    return source;
+  }
+
+  return {
+    ...source,
+    mimeType: detectedMimeType,
+    blob: new Blob([source.blob], { type: detectedMimeType }),
+  };
 }
 
 export function createDraftAttachments(

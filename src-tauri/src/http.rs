@@ -41,6 +41,11 @@ struct UpstreamError {
     code: Option<String>,
 }
 
+struct ValidatedAttachment {
+    bytes: Vec<u8>,
+    mime_type: &'static str,
+}
+
 pub async fn generate(request: &ImageRequest) -> Result<ImageResponse, CommandError> {
     validate_common_request(request)?;
     let endpoint = build_endpoint(&request.base_url, "images/generations")?;
@@ -71,10 +76,10 @@ pub async fn edit(request: &ImageRequest) -> Result<ImageResponse, CommandError>
         .text("size", request.size.clone())
         .text("quality", request.quality.clone());
 
-    for (attachment, bytes) in request.attachments.iter().zip(attachments) {
-        let part = Part::bytes(bytes)
+    for (attachment, validated) in request.attachments.iter().zip(attachments) {
+        let part = Part::bytes(validated.bytes)
             .file_name(attachment.name.clone())
-            .mime_str(&attachment.mime_type)
+            .mime_str(validated.mime_type)
             .map_err(|_| {
                 CommandError::new("参考图 MIME 类型无效。", "INVALID_ATTACHMENT_MIME")
             })?;
@@ -121,7 +126,9 @@ fn validate_common_request(request: &ImageRequest) -> Result<(), CommandError> {
     Ok(())
 }
 
-fn validate_attachments(attachments: &[ImageAttachment]) -> Result<Vec<Vec<u8>>, CommandError> {
+fn validate_attachments(
+    attachments: &[ImageAttachment],
+) -> Result<Vec<ValidatedAttachment>, CommandError> {
     if attachments.is_empty() || attachments.len() > MAX_ATTACHMENT_COUNT {
         return Err(CommandError::new(
             "图生图需要 1 至 16 张参考图。",
@@ -165,13 +172,10 @@ fn validate_attachments(attachments: &[ImageAttachment]) -> Result<Vec<Vec<u8>>,
                 ));
             }
             let detected = detect_image_mime(&bytes)?;
-            if normalize_mime(&attachment.mime_type) != Some(detected) {
-                return Err(CommandError::new(
-                    "参考图声明格式与实际内容不一致。",
-                    "ATTACHMENT_TYPE_MISMATCH",
-                ));
-            }
-            Ok(bytes)
+            Ok(ValidatedAttachment {
+                bytes,
+                mime_type: detected,
+            })
         })
         .collect()
 }

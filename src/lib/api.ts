@@ -10,10 +10,15 @@ import {
   endpointHostLabel,
   isAllowedRemoteImageUrl,
 } from "./image-endpoint";
+import {
+  detectImageMimeType,
+  IMAGE_MIME_TYPES,
+  type ImageMimeType,
+} from "./image-mime";
 
 const MAX_IMAGE_RESPONSE_BYTES = 25 * 1024 * 1024;
 const MAX_JSON_RESPONSE_BYTES = Math.ceil((MAX_IMAGE_RESPONSE_BYTES * 4) / 3) + 1024 * 1024;
-const SAFE_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const SAFE_IMAGE_TYPES = new Set<string>(IMAGE_MIME_TYPES);
 
 interface UpstreamImage {
   b64_json?: unknown;
@@ -428,28 +433,14 @@ function assertBase64Size(base64: string): void {
   }
 }
 
-function detectBase64MimeType(base64: string): string {
+function detectBase64MimeType(base64: string): ImageMimeType {
   try {
     const sample = window.atob(base64.slice(0, 64));
-    const bytes = Uint8Array.from(sample, (character) => character.charCodeAt(0));
-
-    if (
-      bytes.length >= 8 &&
-      [137, 80, 78, 71, 13, 10, 26, 10].every((value, index) => bytes[index] === value)
-    ) {
-      return "image/png";
-    }
-    if (bytes[0] === 0xff && bytes[1] === 0xd8) {
-      return "image/jpeg";
-    }
-    if (
-      String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" &&
-      String.fromCharCode(...bytes.slice(8, 12)) === "WEBP"
-    ) {
-      return "image/webp";
-    }
-    if (String.fromCharCode(...bytes.slice(0, 3)) === "GIF") {
-      return "image/gif";
+    const detected = detectImageMimeType(
+      Uint8Array.from(sample, (character) => character.charCodeAt(0)),
+    );
+    if (detected) {
+      return detected;
     }
   } catch {
     // Fall through to the unsupported-image error below.
@@ -462,7 +453,7 @@ function detectBase64MimeType(base64: string): string {
   );
 }
 
-function resolveImageMimeType(advertised: string, detected: string): string {
+function resolveImageMimeType(advertised: string, detected: ImageMimeType): ImageMimeType {
   const normalizedAdvertised = advertised.toLowerCase();
   if (normalizedAdvertised && normalizedAdvertised !== detected) {
     throw new StudioApiError(

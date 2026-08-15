@@ -18,7 +18,6 @@ pub struct ImageRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ImageAttachment {
     pub name: String,
-    pub mime_type: String,
     pub base64: String,
 }
 

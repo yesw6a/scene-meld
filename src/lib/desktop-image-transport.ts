@@ -9,7 +9,6 @@ import { arrayBufferToBase64 } from "./base64";
 
 interface DesktopAttachment {
   name: string;
-  mimeType: string;
   base64: string;
 }
 
@@ -45,9 +44,8 @@ export class DesktopImageTransport implements ImageTransport {
     signal: AbortSignal,
   ): Promise<GenerateImageResponse> {
     const encodedAttachments = await Promise.all(
-      attachments.map(async ({ blob, name, mimeType }) => ({
+      attachments.map(async ({ blob, name }) => ({
         name,
-        mimeType,
         base64: arrayBufferToBase64(await blob.arrayBuffer()),
       })),
     );
