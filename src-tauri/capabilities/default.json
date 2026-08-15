@@ -3,5 +3,16 @@
   "identifier": "main-capability",
   "description": "Minimum permissions for the SceneMeld main window.",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default"]
+  "permissions": [
+    "core:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-start-dragging",
+    "core:window:allow-is-maximized",
+    "core:event:allow-listen",
+    "dialog:default",
+    "process:default",
+    "updater:default"
+  ]
 }

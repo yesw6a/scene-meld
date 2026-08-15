@@ -2,14 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import * as stylex from "@stylexjs/stylex";
 import { App as AntdApp, Drawer, Spin } from "antd";
 
+import AppOverlays, { type SettingsPanel } from "./components/AppOverlays";
 import Composer from "./components/Composer";
+import WindowChrome from "./components/WindowChrome";
 import MessageFeed from "./components/MessageFeed";
-import SettingsDrawer from "./components/SettingsDrawer";
 import Sidebar from "./components/Sidebar";
 import StudioHeader from "./components/StudioHeader";
 import WelcomePanel from "./components/WelcomePanel";
 import useConversationDeletion from "./hooks/useConversationDeletion";
 import useImageDrafts from "./hooks/useImageDrafts";
+import useDesktopUpdater from "./hooks/useDesktopUpdater";
 import { requestEditedImage, requestGeneratedImage } from "./lib/api";
 import {
   createConversation,
@@ -62,9 +64,9 @@ import type {
   UserMessage,
   WorkspaceSnapshot,
 } from "./types";
+import { IMAGE_MODEL } from "./types";
 
 type SettledConnectionStatus = Extract<ConnectionStatus, "ready" | "success" | "error">;
-
 export default function StudioApp() {
   const { message: toast } = AntdApp.useApp();
   const [workspace, setWorkspace] = useState<WorkspaceSnapshot | null>(null);
@@ -73,7 +75,7 @@ export default function StudioApp() {
   const [settings, setSettings] = useState<GenerationSettings>(() => loadSettings());
   const [settingsReady, setSettingsReady] = useState(() => !isDesktopRuntime());
   const [draft, setDraft] = useState("");
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPanel, setSettingsPanel] = useState<SettingsPanel>(null);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [navigationCollapsed, setNavigationCollapsed] = useState(() =>
     loadNavigationCollapsed(),
@@ -86,8 +88,15 @@ export default function StudioApp() {
   const initializationStarted = useRef(false);
   const settingsHydrationStarted = useRef(false);
   const storageWarningShown = useRef(false);
+  const desktopUpdater = useDesktopUpdater({ busy: isGenerating || Boolean(abortRef.current) });
 
-  const configured = Boolean(settings.baseUrl && settings.apiKey && settings.model);
+  const openConnectionSettings = () => setSettingsPanel("connection");
+  const openDataSettings = () => setSettingsPanel("data");
+  const openAppearanceSettings = () => setSettingsPanel("appearance");
+  const openAbout = () => setSettingsPanel("about");
+  const closeSettingsPanel = () => setSettingsPanel(null);
+
+  const configured = Boolean(settings.baseUrl && settings.apiKey);
   const connectionStatus: ConnectionStatus = !configured
     ? "incomplete"
     : isGenerating
@@ -226,8 +235,8 @@ export default function StudioApp() {
       }
 
       if (!configured) {
-        setSettingsOpen(true);
-        toast.warning("请先填写 API 基础地址、API Key 与模型。");
+        openConnectionSettings();
+        toast.warning("请先填写 API 基础地址与 API Key。");
         return;
       }
 
@@ -236,10 +245,10 @@ export default function StudioApp() {
       const assistantId = createId("assistant");
       const now = Date.now();
       const attachmentSources = attachmentSourcesOverride ?? draftImageSources;
-      const requestSnapshot: GenerationSnapshot = snapshotOverride ?? {
-        model: settings.model,
-        size: settings.size,
-        quality: settings.quality,
+      const requestSnapshot: GenerationSnapshot = {
+        model: IMAGE_MODEL,
+        size: snapshotOverride?.size ?? settings.size,
+        quality: snapshotOverride?.quality ?? settings.quality,
       };
       const requestSettings: GenerationRequestSettings = {
         ...settings,
@@ -359,27 +368,32 @@ export default function StudioApp() {
   );
 
   const handleSaveSettings = async (nextSettings: GenerationSettings) => {
-    const connectionChanged =
-      nextSettings.baseUrl !== settings.baseUrl ||
-      nextSettings.apiKey !== settings.apiKey ||
-      nextSettings.model !== settings.model;
+    const normalizedSettings = { ...nextSettings, model: IMAGE_MODEL };
+    const networkConnectionChanged =
+      normalizedSettings.baseUrl !== settings.baseUrl ||
+      normalizedSettings.apiKey !== settings.apiKey;
+    const connectionSettingsChanged =
+      networkConnectionChanged ||
+      normalizedSettings.rememberApiKey !== settings.rememberApiKey;
 
     try {
-      await saveSettings(nextSettings);
-      setSettings(nextSettings);
-      setSettingsOpen(false);
-      if (connectionChanged) {
+      await saveSettings(normalizedSettings);
+      setSettings(normalizedSettings);
+      closeSettingsPanel();
+      if (networkConnectionChanged) {
         setLastConnectionStatus("ready");
       }
       const desktop = isDesktopRuntime();
       toast.success(
-        nextSettings.rememberApiKey
-          ? desktop
-            ? "设置已保存，API Key 由操作系统凭据管理器保管。"
-            : "设置已保存，API Key 将保留在此浏览器中。"
-          : desktop
-            ? "设置已保存，API Key 仅保留到本次应用会话结束。"
-            : "设置已保存，API Key 仅保留到页面刷新前。",
+        connectionSettingsChanged
+            ? normalizedSettings.rememberApiKey
+              ? desktop
+                ? "连接设置已保存，应用已请求系统凭据管理器保存 API Key；具体保护能力取决于系统和账户配置。"
+                : "连接设置已保存，API Key 将保留在此浏览器中。"
+            : desktop
+              ? "连接设置已保存，API Key 仅保留到本次应用会话结束。"
+              : "连接设置已保存，API Key 仅保留到页面刷新前。"
+          : "工作区设置已保存。",
       );
     } catch {
       toast.error(
@@ -392,7 +406,7 @@ export default function StudioApp() {
 
   const handleQuickSettingChange = (patch: Partial<GenerationSettings>) => {
     setSettings((current) => {
-      const next = { ...current, ...patch };
+      const next = { ...current, ...patch, model: IMAGE_MODEL };
       saveSettingsPreferences(next);
       return next;
     });
@@ -630,9 +644,17 @@ export default function StudioApp() {
     }
   };
 
+  const handleSelectConversation = (activeId: string) => {
+    setWorkspace((current) => (current ? { ...current, activeId } : current));
+    setDraft("");
+    clearDraftImages();
+    setNavigationOpen(false);
+  };
+
   if (!workspaceReady || !settingsReady || !workspace || !activeConversation) {
     return (
       <div {...stylex.props(styles.loadingShell)}>
+        <WindowChrome />
         <Spin size="large" />
         <span>正在读取本地创作记录...</span>
       </div>
@@ -645,9 +667,21 @@ export default function StudioApp() {
     : activeConversation.messages.length === 0
       ? "请先开始当前创作。"
       : undefined;
+  const sharedSidebarProps = {
+    onCreate: handleCreateConversation,
+    onDelete: handleDeleteConversation,
+    onOpenData: openDataSettings,
+    onOpenAppearance: openAppearanceSettings,
+    onOpenAbout: openAbout,
+  };
 
   return (
-    <div {...stylex.props(styles.app)}>
+    <div {...stylex.props(styles.app, isDesktopRuntime() && styles.desktopApp)}>
+      <WindowChrome
+        updateSnapshot={desktopUpdater.snapshot}
+        onOpenUpdates={openAbout}
+        onCheckForUpdates={desktopUpdater.checkForUpdates}
+      />
       <Sidebar
         conversations={workspace.conversations}
         activeId={workspace.activeId}
@@ -656,34 +690,36 @@ export default function StudioApp() {
         disabledReason={createDisabledReason}
         deletionDisabled={isGenerating}
         deletionDisabledReason="请先等待当前图片生成完成，或停止生成。"
+        {...sharedSidebarProps}
         onCollapsedChange={handleNavigationCollapsedChange}
-        onSelect={(activeId) => {
-          setWorkspace((current) => (current ? { ...current, activeId } : current));
-          setDraft("");
-          clearDraftImages();
-          setNavigationOpen(false);
-        }}
-        onCreate={handleCreateConversation}
-        onDelete={handleDeleteConversation}
+        onSelect={handleSelectConversation}
       />
 
       <main id="main-content" tabIndex={-1} {...stylex.props(styles.main)}>
-        <StudioHeader
-          conversation={activeConversation}
-          generationCount={countGenerations(activeConversation)}
-          connection={connection}
-          endpointLabel={endpointHostLabel(settings.baseUrl)}
-          model={settings.model}
-          onOpenNavigation={() => setNavigationOpen(true)}
-          onOpenSettings={() => setSettingsOpen(true)}
-        />
+        <div {...stylex.props(styles.mainHeader)}>
+          <StudioHeader
+            conversation={activeConversation}
+            generationCount={countGenerations(activeConversation)}
+            connection={connection}
+            endpointLabel={endpointHostLabel(settings.baseUrl)}
+            model={IMAGE_MODEL}
+            onOpenNavigation={() => setNavigationOpen(true)}
+            onOpenSettings={openConnectionSettings}
+          />
+        </div>
 
-        <section {...stylex.props(styles.conversationPane)} aria-label="图片生成对话">
+        <section
+          {...stylex.props(
+            styles.conversationPane,
+            activeConversation.messages.length === 0 && styles.conversationPaneEmpty,
+          )}
+          aria-label="图片生成对话"
+        >
           {activeConversation.messages.length === 0 ? (
             <WelcomePanel
               configured={configured}
               onChoosePrompt={setDraft}
-              onOpenSettings={() => setSettingsOpen(true)}
+              onOpenSettings={openConnectionSettings}
             />
           ) : (
             <MessageFeed
@@ -716,17 +752,21 @@ export default function StudioApp() {
         />
       </main>
 
-      <SettingsDrawer
-        open={settingsOpen}
+      <AppOverlays
+        settingsPanel={settingsPanel}
         settings={settings}
         conversationCount={workspace.conversations.length}
         generationCount={totalGenerations}
         storageAvailable={storageAvailable}
         historyClearing={historyClearing}
-        onClose={() => setSettingsOpen(false)}
-        onSave={handleSaveSettings}
-        onReset={handleResetSettings}
+        desktopUpdateSnapshot={desktopUpdater.snapshot}
+        updateBusy={isGenerating || Boolean(abortRef.current)}
+        onCloseSettings={closeSettingsPanel}
+        onSaveSettings={handleSaveSettings}
+        onResetSettings={handleResetSettings}
         onClearHistory={handleClearHistory}
+        onCheckForUpdates={desktopUpdater.checkForUpdates}
+        onInstallUpdate={desktopUpdater.installUpdate}
       />
 
       <Drawer
@@ -746,14 +786,8 @@ export default function StudioApp() {
           disabledReason={createDisabledReason}
           deletionDisabled={isGenerating}
           deletionDisabledReason="请先等待当前图片生成完成，或停止生成。"
-          onSelect={(activeId) => {
-            setWorkspace((current) => (current ? { ...current, activeId } : current));
-            setDraft("");
-            clearDraftImages();
-            setNavigationOpen(false);
-          }}
-          onCreate={handleCreateConversation}
-          onDelete={handleDeleteConversation}
+          {...sharedSidebarProps}
+          onSelect={handleSelectConversation}
         />
       </Drawer>
     </div>

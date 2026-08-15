@@ -11,12 +11,17 @@ import type {
   MessageImageAttachment,
 } from "../types";
 
-export const IMAGE_ATTACHMENT_ACCEPT = "image/png,image/jpeg,image/webp";
+export const IMAGE_ATTACHMENT_ACCEPT = "image/png,image/jpeg,image/webp,image/gif";
 export const MAX_IMAGE_ATTACHMENT_COUNT = 16;
 export const MAX_IMAGE_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 export const MAX_IMAGE_ATTACHMENTS_TOTAL_BYTES = 50 * 1024 * 1024;
 
-const SUPPORTED_IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const SUPPORTED_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+]);
 
 export interface AddImageFilesResult {
   attachments: DraftImageAttachment[];
@@ -48,7 +53,9 @@ export function addImageFiles(
     }
 
     if (!SUPPORTED_IMAGE_TYPES.has(file.type)) {
-      errors.add(`“${file.name || "未命名图片"}”格式不受支持，请使用 PNG、JPEG 或 WebP。`);
+      errors.add(
+        `“${file.name || "未命名图片"}”格式不受支持，请使用 PNG、JPEG、WebP 或 GIF。`,
+      );
       continue;
     }
 
@@ -240,5 +247,6 @@ function mimeExtension(mimeType?: string): string {
   return {
     "image/jpeg": "jpg",
     "image/webp": "webp",
+    "image/gif": "gif",
   }[mimeType || ""] ?? "png";
 }

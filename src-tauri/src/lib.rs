@@ -5,7 +5,7 @@ mod secrets;
 mod types;
 
 use request_state::RequestState;
-use tauri::State;
+use tauri::{Manager, State};
 use types::{CommandError, ImageRequest, ImageResponse};
 
 #[tauri::command]
@@ -77,6 +77,25 @@ async fn delete_api_key() -> Result<(), CommandError> {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            #[cfg(desktop)]
+            {
+                app.handle().plugin(tauri_plugin_process::init())?;
+                app.handle()
+                    .plugin(tauri_plugin_updater::Builder::new().build())?;
+            }
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            #[cfg(debug_assertions)]
+            {
+                if window.label() == "main"
+                    && matches!(event, tauri::WindowEvent::CloseRequested { .. })
+                {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         .manage(RequestState::default())
         .invoke_handler(tauri::generate_handler![
             generate_image,

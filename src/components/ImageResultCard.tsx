@@ -77,7 +77,7 @@ export default function ImageResultCard({ message }: ImageResultCardProps) {
         {imageUrl ? (
           <Image
             src={imageUrl}
-            alt={`根据提示词生成的图片：${message.prompt}`}
+            alt="生成结果图片"
             preview={{ mask: "查看大图" }}
             width="100%"
             loading="lazy"

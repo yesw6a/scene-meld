@@ -24,12 +24,12 @@ export function connectionPresentation(
     incomplete: { label: "未配置", description: "连接信息尚未填写完整。" },
     ready: {
       label: "配置完整",
-      description: `${device}将在下一次生成时直接验证目标 API。`,
+      description: `${device}将在下一次生成时向目标 API 发起请求。`,
       color: "cyan",
     },
     requesting: {
       label: "请求中",
-      description: `${device}正在直接向目标 API 请求图片。`,
+      description: `${device}正在向目标 API 请求图片。`,
       color: "processing",
     },
     success: { label: "最近成功", description: "最近一次图片生成请求成功。", color: "green" },

@@ -3,6 +3,7 @@ import type {
   GenerationRequestSettings,
   ImageAttachmentSource,
 } from "../types";
+import { IMAGE_MODEL } from "../types";
 import type { ImageTransport } from "./image-transport";
 import {
   buildImageApiEndpoint,
@@ -93,7 +94,7 @@ async function requestGeneratedImageInBrowser(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: settings.model,
+        model: IMAGE_MODEL,
         prompt,
         size: settings.size,
         quality: settings.quality,
@@ -113,7 +114,7 @@ async function requestEditedImageInBrowser(
 ): Promise<GenerateImageResponse> {
   const endpoint = buildImageApiEndpoint(settings.baseUrl, "images/edits");
   const formData = new FormData();
-  formData.append("model", settings.model);
+  formData.append("model", IMAGE_MODEL);
   formData.append("prompt", prompt);
   formData.append("size", settings.size);
   formData.append("quality", settings.quality);
@@ -156,7 +157,7 @@ async function fetchDirectImageApi(
     }
 
     throw new StudioApiError(
-      `浏览器无法直接连接 ${endpointHostLabel(endpoint, "目标 API")}。请检查网络、HTTPS、CORS 预检和重定向设置；SceneMeld Web 不提供中转服务，未开放浏览器 CORS 的端点可改用 SceneMeld Desktop。`,
+      `浏览器无法连接 ${endpointHostLabel(endpoint, "目标 API")}。请检查网络、HTTPS、CORS 预检和重定向设置；本项目不提供图片请求中转服务，未开放浏览器 CORS 的端点可改用 SceneMeld Desktop。`,
       undefined,
       "NETWORK_OR_CORS_ERROR",
     );

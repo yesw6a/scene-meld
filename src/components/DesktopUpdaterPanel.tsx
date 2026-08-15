@@ -1,0 +1,148 @@
+import * as stylex from "@stylexjs/stylex";
+import { Alert, Button, Progress, Space, Typography } from "antd";
+import { CheckCircle2, Download, RefreshCw, Sparkles } from "lucide-react";
+
+import type { DesktopUpdateSnapshot } from "../hooks/useDesktopUpdater";
+import { colors, motion, radii } from "../styles/tokens.stylex";
+
+interface DesktopUpdaterPanelProps {
+  snapshot: DesktopUpdateSnapshot;
+  busy: boolean;
+  onCheck: () => void | Promise<void>;
+  onInstall: () => void | Promise<void>;
+}
+
+export default function DesktopUpdaterPanel({
+  snapshot,
+  busy,
+  onCheck,
+  onInstall,
+}: DesktopUpdaterPanelProps) {
+  const checking = snapshot.status === "checking";
+  const downloading = snapshot.status === "downloading" || snapshot.status === "installing";
+  const disabled = snapshot.status === "disabled" || checking || downloading;
+
+  return (
+    <section {...stylex.props(styles.section)} aria-labelledby="desktop-updates-heading">
+      <div {...stylex.props(styles.heading)}>
+        <div {...stylex.props(styles.titleRow)}>
+          <Typography.Title id="desktop-updates-heading" level={5}>
+            桌面更新
+          </Typography.Title>
+          <span {...stylex.props(styles.badge)}>
+            <Sparkles size={13} aria-hidden="true" />
+            生产桌面版
+          </span>
+        </div>
+        <Typography.Paragraph type="secondary" {...stylex.props(styles.copy)}>
+          桌面版从项目配置的 GitHub Releases 源检查更新；Web 版和开发态不加载桌面更新。
+        </Typography.Paragraph>
+      </div>
+
+      {snapshot.status === "disabled" ? (
+        <Alert showIcon type="info" message="当前运行环境不提供生产桌面更新。" />
+      ) : null}
+
+      {snapshot.status === "idle" ? (
+        <Alert
+          showIcon
+          type="success"
+          icon={<CheckCircle2 size={16} />}
+          message={
+            snapshot.currentVersion
+              ? `未发现可用更新（${snapshot.currentVersion}）`
+              : "未发现可用更新"
+          }
+        />
+      ) : null}
+
+      {snapshot.status === "available" ? (
+        <Alert
+          showIcon
+          type="info"
+          message={`发现新版本 ${snapshot.version ?? ""}`}
+          description={snapshot.body || "暂无更新说明"}
+          action={
+            <Button
+              type="primary"
+              size="small"
+              icon={<Download size={14} />}
+              disabled={busy}
+              onClick={() => void onInstall()}
+            >
+              {busy ? "正在准备更新" : "下载并重启"}
+            </Button>
+          }
+        />
+      ) : null}
+
+      {downloading ? (
+        <div {...stylex.props(styles.progressBlock)}>
+          <Typography.Text>
+            {snapshot.status === "installing" ? "正在准备重启…" : "正在下载更新…"}
+          </Typography.Text>
+          <Progress percent={snapshot.progress} status={snapshot.status === "installing" ? "active" : undefined} />
+        </div>
+      ) : null}
+
+      {snapshot.status === "error" ? (
+        <Alert showIcon type="error" message={snapshot.error || "更新失败"} />
+      ) : null}
+
+      <Space>
+        <Button
+          icon={<RefreshCw size={15} />}
+          loading={checking}
+          disabled={disabled}
+          onClick={() => void onCheck()}
+        >
+          检查更新
+        </Button>
+      </Space>
+    </section>
+  );
+}
+
+const styles = stylex.create({
+  section: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "14px",
+  },
+  heading: {
+    display: "flex",
+    flexDirection: "column",
+  },
+  titleRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+  },
+  badge: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: "4px",
+    padding: "3px 7px",
+    color: colors.primary,
+    fontSize: "11px",
+    fontWeight: 600,
+    backgroundColor: colors.primarySoft,
+    border: `1px solid ${colors.glassBorder}`,
+    borderRadius: radii.pill,
+  },
+  copy: {
+    marginTop: "-4px",
+    marginBottom: 0,
+    lineHeight: 1.65,
+  },
+  progressBlock: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px",
+    padding: "12px",
+    backgroundColor: colors.glassSubtle,
+    border: `1px solid ${colors.glassBorder}`,
+    borderRadius: radii.medium,
+    transition: `background-color ${motion.fast} ${motion.easing}`,
+  },
+});

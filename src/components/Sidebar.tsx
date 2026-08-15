@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import BrandMark from "./BrandMark";
+import WorkspaceTools from "./WorkspaceTools";
 import type { Conversation } from "../types";
 import { colors, materials, motion, radii, shadows } from "../styles/tokens.stylex";
 
@@ -25,6 +26,9 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onCreate: () => void;
   onDelete: (id: string) => void;
+  onOpenData?: () => void;
+  onOpenAppearance?: () => void;
+  onOpenAbout?: () => void;
 }
 
 export default function Sidebar({
@@ -40,6 +44,9 @@ export default function Sidebar({
   onSelect,
   onCreate,
   onDelete,
+  onOpenData,
+  onOpenAppearance,
+  onOpenAbout,
 }: SidebarProps) {
   const navigationCollapsed = collapsed && !embedded;
   const { modal } = AntdApp.useApp();
@@ -47,7 +54,7 @@ export default function Sidebar({
   const confirmDelete = (conversation: Conversation) => {
     modal.confirm({
       title: `删除“${conversation.title}”？`,
-      content: "消息、参考图、生成图片和未发送内容将从当前设备删除，无法撤销。",
+      content: "消息、参考图、生成图片和未发送内容将从当前设备删除；应用内无法撤销。",
       okText: "删除",
       cancelText: "取消",
       okType: "danger",
@@ -74,7 +81,7 @@ export default function Sidebar({
           {!navigationCollapsed ? (
             <span {...stylex.props(styles.brandCopy)}>
               <strong>SceneMeld</strong>
-              <small>Local-first image workspace</small>
+              <small>Image workspace</small>
             </span>
           ) : null}
         </div>
@@ -183,10 +190,13 @@ export default function Sidebar({
         })}
       </nav>
 
-      {!navigationCollapsed ? (
-        <p {...stylex.props(styles.footer)}>
-          创作记录保存在当前设备中，可在设置里单独清除。请下载重要图片作为备份。
-        </p>
+      {onOpenData && onOpenAppearance && onOpenAbout ? (
+        <WorkspaceTools
+          collapsed={navigationCollapsed}
+          onOpenData={onOpenData}
+          onOpenAppearance={onOpenAppearance}
+          onOpenAbout={onOpenAbout}
+        />
       ) : null}
     </aside>
   );
@@ -195,7 +205,7 @@ export default function Sidebar({
 const styles = stylex.create({
   root: {
     width: "272px",
-    height: "calc(100dvh - 24px)",
+    height: "calc(100% - 24px)",
     flexShrink: 0,
     display: "flex",
     flexDirection: "column",
@@ -314,13 +324,12 @@ const styles = stylex.create({
     borderWidth: 0,
     borderRadius: radii.pill,
     cursor: "pointer",
-    transitionProperty: "background-color, opacity, transform, box-shadow",
+    transitionProperty: "background-color, opacity, box-shadow, transform",
     transitionDuration: motion.standard,
     transitionTimingFunction: motion.easing,
     ":hover": {
       backgroundColor: colors.primaryHover,
       boxShadow: shadows.interactive,
-      transform: "translateY(-1px)",
     },
     ":active": {
       backgroundColor: colors.primaryPressed,
@@ -351,6 +360,7 @@ const styles = stylex.create({
   },
   list: {
     minHeight: 0,
+    flex: 1,
     display: "flex",
     flexDirection: "column",
     gap: "8px",
@@ -471,12 +481,5 @@ const styles = stylex.create({
   deleteButtonEmbedded: {
     width: "44px",
     height: "44px",
-  },
-  footer: {
-    margin: "auto 8px 0",
-    paddingTop: "18px",
-    color: colors.muted,
-    fontSize: "12px",
-    lineHeight: 1.55,
   },
 });

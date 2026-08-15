@@ -1,4 +1,4 @@
-name: Desktop Draft Release
+name: Desktop Release
 
 on:
   workflow_dispatch:
@@ -11,10 +11,13 @@ permissions:
 
 jobs:
   release-desktop:
-    name: Build ${{ matrix.name }} draft
+    name: Build ${{ matrix.name }} release
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
+      # tauri-action merges each platform's artifacts into latest.json. Keep
+      # those writes serialized so one matrix job cannot overwrite another.
+      max-parallel: 1
       matrix:
         include:
           - name: Windows x64
@@ -77,10 +80,32 @@ jobs:
       - name: Check frontend types
         run: pnpm check
 
-      - name: Build unsigned desktop draft
+      - name: Inject updater public key
+        shell: pwsh
+        env:
+          TAURI_UPDATER_PUBLIC_KEY: ${{ vars.TAURI_UPDATER_PUBLIC_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:TAURI_UPDATER_PUBLIC_KEY)) {
+            throw "Repository variable TAURI_UPDATER_PUBLIC_KEY is required for signed updater builds."
+          }
+          $config = @{
+            bundle = @{
+              createUpdaterArtifacts = $true
+            }
+            plugins = @{
+              updater = @{
+                pubkey = $env:TAURI_UPDATER_PUBLIC_KEY
+              }
+            }
+          } | ConvertTo-Json -Depth 5
+          Set-Content -LiteralPath src-tauri/tauri.release.conf.json -Value $config -Encoding utf8
+
+      - name: Build signed desktop release
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: v__VERSION__
           releaseName: SceneMeld v__VERSION__
@@ -88,10 +113,10 @@ jobs:
             SceneMeld Desktop v__VERSION__ 多平台预览构建。
 
             当前构建未配置 Windows 代码签名或 macOS 公证，可能触发 SmartScreen 或 Gatekeeper 提示。请先核对仓库来源和校验值。
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
           tauriScript: pnpm tauri
           retryAttempts: 2
-          uploadUpdaterJson: false
+          uploadUpdaterJson: true
           releaseAssetNamePattern: SceneMeld_[version]_[platform]_[arch][_setup][ext]
-          args: --ci --target ${{ matrix.target }}
+          args: --ci --target ${{ matrix.target }} --config src-tauri/tauri.release.conf.json

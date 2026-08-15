@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import * as stylex from "@stylexjs/stylex";
 import {
   Alert,
@@ -8,9 +8,7 @@ import {
   Form,
   Input,
   App as AntdApp,
-  Segmented,
   Select,
-  Space,
   Switch,
   Tag,
   Typography,
@@ -19,12 +17,10 @@ import {
   Check,
   Database,
   KeyRound,
-  Monitor,
-  Moon,
   RotateCcw,
   Save,
   ShieldAlert,
-  Sun,
+  SlidersHorizontal,
   Trash2,
 } from "lucide-react";
 
@@ -39,12 +35,12 @@ import {
   normalizeImageApiBaseUrl,
 } from "../lib/image-endpoint";
 import { isDesktopRuntime } from "../lib/runtime";
-import type { GenerationSettings, ImageQuality, ImageSize } from "../types";
+import { IMAGE_MODEL, type GenerationSettings, type ImageQuality, type ImageSize } from "../types";
 import { colors, motion, radii } from "../styles/tokens.stylex";
-import { useAppearance, type AppearanceMode } from "../theme/AppearanceProvider";
 
 interface SettingsDrawerProps {
   open: boolean;
+  section: "connection" | "workspace" | "data";
   settings: GenerationSettings;
   conversationCount: number;
   generationCount: number;
@@ -58,6 +54,7 @@ interface SettingsDrawerProps {
 
 export default function SettingsDrawer({
   open,
+  section,
   settings,
   conversationCount,
   generationCount,
@@ -68,13 +65,13 @@ export default function SettingsDrawer({
   onReset,
   onClearHistory,
 }: SettingsDrawerProps) {
-  const { mode: appearanceMode, resolvedMode, setMode: setAppearanceMode } = useAppearance();
   const { modal } = AntdApp.useApp();
   const [draft, setDraft] = useState(settings);
   const [endpointError, setEndpointError] = useState<string>();
   const [formError, setFormError] = useState<string>();
   const [saving, setSaving] = useState(false);
   const desktop = isDesktopRuntime();
+  const dataOnly = section === "data";
   const requestEndpoint = previewGenerationEndpoint(draft.baseUrl);
   const requestHost = endpointHostLabel(draft.baseUrl, "");
 
@@ -84,7 +81,7 @@ export default function SettingsDrawer({
       setEndpointError(undefined);
       setFormError(undefined);
     }
-  }, [open, settings]);
+  }, [open, section, settings]);
 
   const updateDraft = <Key extends keyof GenerationSettings>(
     key: Key,
@@ -94,6 +91,21 @@ export default function SettingsDrawer({
   };
 
   const handleSave = async () => {
+    if (dataOnly) {
+      return;
+    }
+
+    if (section === "workspace") {
+      setFormError(undefined);
+      setSaving(true);
+      try {
+        await onSave({ ...draft, model: IMAGE_MODEL });
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     let normalizedBaseUrl: string;
 
     try {
@@ -108,12 +120,12 @@ export default function SettingsDrawer({
       ...draft,
       baseUrl: normalizedBaseUrl,
       apiKey: draft.apiKey.trim(),
-      model: draft.model.trim(),
+      model: IMAGE_MODEL,
     };
 
-    if (!trimmed.apiKey || !trimmed.model) {
+    if (!trimmed.apiKey) {
       setEndpointError(undefined);
-      setFormError("请填写 API Key 和模型名称。");
+      setFormError("请填写 API Key。");
       return;
     }
 
@@ -136,7 +148,7 @@ export default function SettingsDrawer({
   const confirmClearHistory = () => {
     modal.confirm({
       title: "清除全部本地创作记录？",
-      content: "会话、消息和已保存图片都会删除，且无法撤销。连接配置不受影响。",
+      content: "会话、消息和已保存图片都会删除；应用内无法撤销。连接配置不受影响。",
       okText: "清除记录",
       cancelText: "取消",
       okType: "danger",
@@ -165,8 +177,18 @@ export default function SettingsDrawer({
     <Drawer
       title={
         <span {...stylex.props(styles.drawerTitle)}>
-          <KeyRound aria-hidden="true" size={19} strokeWidth={1.8} />
-          连接与生成设置
+          {section === "connection" ? (
+            <KeyRound aria-hidden="true" size={19} strokeWidth={1.8} />
+          ) : section === "data" ? (
+            <Database aria-hidden="true" size={19} strokeWidth={1.8} />
+          ) : (
+            <SlidersHorizontal aria-hidden="true" size={19} strokeWidth={1.8} />
+          )}
+          {section === "connection"
+            ? "连接信息"
+            : section === "data"
+              ? "本地数据"
+              : "工作区设置"}
         </span>
       }
       width="min(420px, 100vw)"
@@ -176,56 +198,37 @@ export default function SettingsDrawer({
       footer={
         <div {...stylex.props(styles.footer)}>
           <Button className={stylex.props(styles.footerButton).className} onClick={onClose}>
-            取消
+            {dataOnly ? "关闭" : "取消"}
           </Button>
-          <Button
-            type="primary"
-            icon={<Save size={16} />}
-            loading={saving}
-            className={stylex.props(styles.footerButton).className}
-            onClick={() => void handleSave()}
-          >
-            保存设置
-          </Button>
+          {!dataOnly ? (
+            <Button
+              type="primary"
+              icon={<Save size={16} />}
+              loading={saving}
+              className={stylex.props(styles.footerButton).className}
+              onClick={() => void handleSave()}
+            >
+              保存设置
+            </Button>
+          ) : null}
         </div>
       }
     >
       <div {...stylex.props(styles.content)}>
-        <section {...stylex.props(styles.section)} aria-labelledby="appearance-heading">
-          <div {...stylex.props(styles.sectionHeading)}>
-            <Typography.Title id="appearance-heading" level={5}>
-              外观
-            </Typography.Title>
-            <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-              当前显示为{resolvedMode === "dark" ? "深色" : "浅色"}，选择会保存在当前设备中。
-            </Typography.Paragraph>
-          </div>
-          <Segmented<AppearanceMode>
-            block
-            aria-label="选择界面外观"
-            value={appearanceMode}
-            options={APPEARANCE_OPTIONS}
-            className={`studio-appearance-segmented ${
-              stylex.props(styles.appearanceControl).className ?? ""
-            }`}
-            onChange={setAppearanceMode}
-          />
-        </section>
-
-        <Divider />
-
         <Form layout="vertical" requiredMark="optional">
           {formError ? <Alert type="error" showIcon message={formError} /> : null}
 
-          <section {...stylex.props(styles.section)} aria-labelledby="connection-heading">
+          {section === "connection" ? (
+            <>
+              <section {...stylex.props(styles.section)} aria-labelledby="connection-heading">
             <div {...stylex.props(styles.sectionHeading)}>
               <Typography.Title id="connection-heading" level={5}>
                 {desktop ? "设备直连" : "API 直连"}
               </Typography.Title>
               <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
                 {desktop
-                  ? "图片请求由桌面应用直接发送到你填写的兼容 Endpoint，不经过 SceneMeld 或 Cloudflare，且不受浏览器 CORS 限制。"
-                  : "SceneMeld Web 是纯静态页面，图片请求会由此浏览器直接发送到你填写的兼容 Endpoint。"}
+                  ? "图片请求由桌面应用发送到你填写的兼容 Endpoint；本项目不提供图片请求中转服务，桌面版不受浏览器 CORS 限制。"
+                  : "SceneMeld Web 是纯静态页面，浏览器会将图片请求发送到你填写的兼容 Endpoint；目标服务需要支持 CORS。"}
               </Typography.Paragraph>
             </div>
 
@@ -250,7 +253,7 @@ export default function SettingsDrawer({
             <div {...stylex.props(styles.endpointPreview)} aria-live="polite">
               <span>{requestHost ? `API Key 将发送至 ${requestHost}` : "实际请求"}</span>
               <code>{requestEndpoint ? `POST ${requestEndpoint}` : "填写有效地址后显示"}</code>
-              {requestHost ? <small>SceneMeld 与 Cloudflare 不接收或中转生成请求。</small> : null}
+              {requestHost ? <small>本项目不提供图片请求中转服务。</small> : null}
             </div>
 
             <Form.Item
@@ -258,8 +261,8 @@ export default function SettingsDrawer({
               required
               help={
                 requestHost
-                  ? `仅随生成请求直接发送到 ${requestHost}，不会发送给 SceneMeld 或 Cloudflare。`
-                  : "仅随生成请求直接发送到目标 Endpoint，不会发送给 SceneMeld 或 Cloudflare。"
+                  ? `生成请求会发送到 ${requestHost}；本项目不提供图片请求中转服务。`
+                  : "生成请求会发送到目标 Endpoint；本项目不提供图片请求中转服务。"
               }
             >
               <Input.Password
@@ -272,11 +275,11 @@ export default function SettingsDrawer({
 
             <label {...stylex.props(styles.switchRow)}>
               <span>
-                <strong>{desktop ? "保存 API Key 到系统凭据管理器" : "保存 API Key 到此浏览器"}</strong>
+                <strong>{desktop ? "尝试保存 API Key 到系统凭据管理器" : "保存 API Key 到此浏览器"}</strong>
                 <small>
                   {draft.rememberApiKey
                     ? desktop
-                      ? "重新打开应用后仍会保留。"
+                      ? "应用会尝试在重新打开时读取；具体保护能力取决于系统和账户配置。"
                       : "刷新页面后仍会保留。"
                     : desktop
                       ? "仅保留到本次应用会话结束。"
@@ -294,34 +297,34 @@ export default function SettingsDrawer({
                 showIcon
                 icon={<ShieldAlert size={18} />}
                 type={desktop ? "info" : "warning"}
-                message={desktop ? "由操作系统保管密钥" : "仅在受信任设备上保存密钥"}
+                message={desktop ? "尝试使用系统凭据管理器" : "浏览器本地保存"}
                 description={
                   desktop
-                    ? "API Key 会写入操作系统凭据管理器，不会写入 localStorage。"
+                    ? "应用会请求操作系统凭据管理器保存 API Key；具体保护能力取决于操作系统和账户配置。"
                     : "API Key 会写入此浏览器的 localStorage，同源脚本和浏览器扩展可能读取它。"
                 }
               />
             ) : null}
-          </section>
+              </section>
+            </>
+          ) : null}
 
-          <Divider />
-
-          <section {...stylex.props(styles.section)} aria-labelledby="generation-heading">
+          {section === "workspace" ? (
+            <section {...stylex.props(styles.section)} aria-labelledby="generation-heading">
             <div {...stylex.props(styles.sectionHeading)}>
               <Typography.Title id="generation-heading" level={5}>
                 生成默认值
               </Typography.Title>
               <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-                画面比例和质量也可以在输入框下方快速切换。
+                模型固定为 gpt-image-2；画面比例和质量也可以在输入框下方快速切换。
               </Typography.Paragraph>
             </div>
 
-            <Form.Item label="模型" required>
-              <Input
-                value={draft.model}
-                placeholder="gpt-image-2"
-                onChange={(event) => updateDraft("model", event.target.value)}
-              />
+            <Form.Item label="模型">
+              <div {...stylex.props(styles.fixedModel)}>
+                <Tag color="blue">{IMAGE_MODEL}</Tag>
+                <span {...stylex.props(styles.fixedModelHint)}>当前版本固定使用此模型</span>
+              </div>
             </Form.Item>
 
             <div {...stylex.props(styles.twoColumns)}>
@@ -379,12 +382,14 @@ export default function SettingsDrawer({
                 />
               </Form.Item>
             </div>
-          </section>
+            </section>
+          ) : null}
         </Form>
 
-        <Divider />
-
-        <section {...stylex.props(styles.section)} aria-labelledby="local-records-heading">
+        {section === "workspace" || section === "data" ? (
+          <>
+            {section === "workspace" ? <Divider /> : null}
+            <section {...stylex.props(styles.section)} aria-labelledby="local-records-heading">
           <div {...stylex.props(styles.sectionHeading)}>
             <div {...stylex.props(styles.headingWithStatus)}>
               <Typography.Title id="local-records-heading" level={5}>
@@ -395,7 +400,7 @@ export default function SettingsDrawer({
               </Tag>
             </div>
             <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-              会话、消息和生成图片保存在当前设备的 IndexedDB 中，不是永久备份。
+              应用会尝试将会话、消息和生成图片保存在当前设备的 IndexedDB 中；这些数据不是永久备份。
             </Typography.Paragraph>
           </div>
 
@@ -421,17 +426,20 @@ export default function SettingsDrawer({
           >
             清除创作记录
           </Button>
-        </section>
+            </section>
+          </>
+        ) : null}
 
-        <Divider />
-
-        <section {...stylex.props(styles.section)} aria-labelledby="connection-reset-heading">
+        {section === "connection" ? (
+          <>
+            <Divider />
+            <section {...stylex.props(styles.section)} aria-labelledby="connection-reset-heading">
           <div {...stylex.props(styles.sectionHeading)}>
             <Typography.Title id="connection-reset-heading" level={5}>
               连接配置
             </Typography.Title>
             <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-              清除 API 基础地址与 API Key，并恢复默认模型、画面比例和质量。创作记录不受影响。
+              清除 API 基础地址与 API Key，并恢复画面比例和质量默认值。模型固定为 gpt-image-2，创作记录不受影响。
             </Typography.Paragraph>
           </div>
           <Button
@@ -441,7 +449,9 @@ export default function SettingsDrawer({
           >
             清除连接配置
           </Button>
-        </section>
+            </section>
+          </>
+        ) : null}
       </div>
     </Drawer>
   );
@@ -462,12 +472,6 @@ const QUALITY_OPTIONS = [
 ] satisfies { label: string; value: ImageQuality }[];
 
 const IMAGE_SIZE_OPTIONS_FOR_SELECT = IMAGE_SIZE_OPTIONS.map((option) => ({ ...option }));
-
-const APPEARANCE_OPTIONS = [
-  { label: "自动", value: "system", icon: <Monitor size={16} aria-hidden="true" /> },
-  { label: "浅色", value: "light", icon: <Sun size={16} aria-hidden="true" /> },
-  { label: "深色", value: "dark", icon: <Moon size={16} aria-hidden="true" /> },
-] satisfies { label: string; value: AppearanceMode; icon: ReactNode }[];
 
 const styles = stylex.create({
   drawerTitle: {
@@ -493,14 +497,6 @@ const styles = stylex.create({
     marginTop: "-4px",
     marginBottom: 0,
     lineHeight: 1.65,
-  },
-  appearanceControl: {
-    padding: "4px",
-    backgroundColor: colors.glassSubtle,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: colors.glassBorder,
-    borderRadius: radii.medium,
   },
   sizeOption: {
     minWidth: 0,
@@ -551,6 +547,22 @@ const styles = stylex.create({
     borderStyle: "solid",
     borderColor: colors.glassBorder,
     borderRadius: radii.medium,
+  },
+  fixedModel: {
+    minHeight: "40px",
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "6px 10px",
+    backgroundColor: colors.glassSubtle,
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: colors.glassBorder,
+    borderRadius: radii.medium,
+  },
+  fixedModelHint: {
+    color: colors.muted,
+    fontSize: "12px",
   },
   switchRow: {
     minHeight: "56px",

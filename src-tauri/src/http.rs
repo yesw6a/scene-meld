@@ -16,8 +16,10 @@ use crate::types::{CommandError, ImageAttachment, ImageRequest, ImageResponse};
 
 const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
 const MAX_JSON_BYTES: usize = ((MAX_IMAGE_BYTES * 4) / 3) + (1024 * 1024);
-const MAX_ATTACHMENT_COUNT: usize = 4;
-const MAX_TOTAL_ATTACHMENT_BYTES: usize = 60 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES: usize = 20 * 1024 * 1024;
+const MAX_ATTACHMENT_COUNT: usize = 16;
+const MAX_TOTAL_ATTACHMENT_BYTES: usize = 50 * 1024 * 1024;
+const SUPPORTED_MODEL: &str = "gpt-image-2";
 
 #[derive(Deserialize)]
 struct UpstreamPayload {
@@ -92,6 +94,12 @@ pub async fn edit(request: &ImageRequest) -> Result<ImageResponse, CommandError>
 }
 
 fn validate_common_request(request: &ImageRequest) -> Result<(), CommandError> {
+    if request.model != SUPPORTED_MODEL {
+        return Err(CommandError::new(
+            "当前仅支持 gpt-image-2 模型。",
+            "UNSUPPORTED_MODEL",
+        ));
+    }
     if request.api_key.trim().is_empty() || request.api_key.len() > 16_384 {
         return Err(CommandError::new("API Key 无效。", "INVALID_API_KEY"));
     }
@@ -116,7 +124,7 @@ fn validate_common_request(request: &ImageRequest) -> Result<(), CommandError> {
 fn validate_attachments(attachments: &[ImageAttachment]) -> Result<Vec<Vec<u8>>, CommandError> {
     if attachments.is_empty() || attachments.len() > MAX_ATTACHMENT_COUNT {
         return Err(CommandError::new(
-            "图生图需要 1 至 4 张参考图。",
+            "图生图需要 1 至 16 张参考图。",
             "INVALID_ATTACHMENT_COUNT",
         ));
     }
@@ -134,25 +142,25 @@ fn validate_attachments(attachments: &[ImageAttachment]) -> Result<Vec<Vec<u8>>,
                     "INVALID_ATTACHMENT_NAME",
                 ));
             }
-            if attachment.base64.len() > MAX_JSON_BYTES {
+            if attachment.base64.len() > ((MAX_ATTACHMENT_BYTES * 4) / 3) + (1024 * 1024) {
                 return Err(CommandError::new(
-                    "单张参考图不能超过 25 MB。",
+                    "单张参考图不能超过 20 MB。",
                     "ATTACHMENT_TOO_LARGE",
                 ));
             }
             let bytes = BASE64.decode(&attachment.base64).map_err(|_| {
                 CommandError::new("参考图 Base64 数据无效。", "INVALID_ATTACHMENT_BASE64")
             })?;
-            if bytes.is_empty() || bytes.len() > MAX_IMAGE_BYTES {
+            if bytes.is_empty() || bytes.len() > MAX_ATTACHMENT_BYTES {
                 return Err(CommandError::new(
-                    "单张参考图不能超过 25 MB。",
+                    "单张参考图不能超过 20 MB。",
                     "ATTACHMENT_TOO_LARGE",
                 ));
             }
             total_bytes = total_bytes.saturating_add(bytes.len());
             if total_bytes > MAX_TOTAL_ATTACHMENT_BYTES {
                 return Err(CommandError::new(
-                    "参考图总大小不能超过 60 MB。",
+                    "参考图总大小不能超过 50 MB。",
                     "ATTACHMENTS_TOO_LARGE",
                 ));
             }

@@ -3,6 +3,7 @@ import type {
   GenerationRequestSettings,
   ImageAttachmentSource,
 } from "../types";
+import { IMAGE_MODEL } from "../types";
 import type { ImageTransport } from "./image-transport";
 import { arrayBufferToBase64 } from "./base64";
 
@@ -67,7 +68,7 @@ function createRequest(
     requestId: crypto.randomUUID(),
     baseUrl: settings.baseUrl,
     apiKey: settings.apiKey,
-    model: settings.model,
+    model: IMAGE_MODEL,
     prompt,
     size: settings.size,
     quality: settings.quality,

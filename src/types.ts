@@ -1,3 +1,5 @@
+export const IMAGE_MODEL = "gpt-image-2" as const;
+
 export type ImageQuality = "low" | "medium" | "high";
 export type ImageSize = "1536x864" | "864x1536" | "1024x1024";
 export type ImageRequestSize = ImageSize | "1536x1024" | "1024x1536";

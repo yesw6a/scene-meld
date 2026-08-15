@@ -16,6 +16,12 @@ import {
   darkColorsTheme,
   darkShadowsTheme,
 } from "../styles/tokens.stylex";
+import {
+  desktopChrome,
+  desktopDrawerOverlayStyles,
+  desktopModalOverlayStyles,
+} from "../styles/desktop-chrome.stylex";
+import { isDesktopRuntime } from "../lib/runtime";
 
 export type AppearanceMode = "system" | "light" | "dark";
 export type ResolvedAppearanceMode = Exclude<AppearanceMode, "system">;
@@ -31,8 +37,12 @@ const LEGACY_STORAGE_KEY = "gpt-image-2-studio.appearance.v1";
 const AppearanceContext = createContext<AppearanceContextValue | null>(null);
 const DARK_THEME_CLASS_NAMES =
   stylex.props(darkColorsTheme, darkShadowsTheme).className?.split(" ").filter(Boolean) ?? [];
+const desktopDrawerConfig = { styles: desktopDrawerOverlayStyles };
+const desktopModalConfig = { styles: desktopModalOverlayStyles };
+const desktopFeedbackConfig = { top: desktopChrome.feedbackTop };
 
 export default function AppearanceProvider({ children }: { children: ReactNode }) {
+  const desktop = isDesktopRuntime();
   const [mode, setModeState] = useState<AppearanceMode>(loadAppearanceMode);
   const [systemMode, setSystemMode] = useState<ResolvedAppearanceMode>(getSystemMode);
   const resolvedMode = mode === "system" ? systemMode : mode;
@@ -92,8 +102,17 @@ export default function AppearanceProvider({ children }: { children: ReactNode }
           darkMode && darkShadowsTheme,
         )}
       >
-        <ConfigProvider theme={themeConfig}>
-          <AntdApp>{children}</AntdApp>
+        <ConfigProvider
+          theme={themeConfig}
+          drawer={desktop ? desktopDrawerConfig : undefined}
+          modal={desktop ? desktopModalConfig : undefined}
+        >
+          <AntdApp
+            message={desktop ? desktopFeedbackConfig : undefined}
+            notification={desktop ? desktopFeedbackConfig : undefined}
+          >
+            {children}
+          </AntdApp>
         </ConfigProvider>
       </div>
     </AppearanceContext.Provider>

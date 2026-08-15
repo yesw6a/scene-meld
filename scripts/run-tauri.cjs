@@ -58,7 +58,7 @@ if (needsCargo) {
 
 // 3) 派发：cargo 检查直接执行 cargo.exe（原生可执行，无需 shell）。
 if (args[0] === "--cargo-check") {
-  const child = spawn("cargo", args.slice(1), { stdio: "inherit" });
+  const child = spawn("cargo", ["check", ...args.slice(1)], { stdio: "inherit" });
   child.on("exit", (code) => process.exit(code ?? 1));
 } else {
   // tauri 子命令经官方 CLI 的 run API 在当前进程内执行：

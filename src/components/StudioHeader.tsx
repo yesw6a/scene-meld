@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { Button, Tag, Tooltip } from "antd";
-import { Menu, Settings } from "lucide-react";
+import { Menu } from "lucide-react";
 
 import type { Conversation } from "../types";
 import { colors, materials, motion, radii, shadows } from "../styles/tokens.stylex";
@@ -31,7 +31,7 @@ export default function StudioHeader({
   return (
     <header {...stylex.props(styles.header)}>
       <div {...stylex.props(styles.headerStart)}>
-        <Tooltip title="打开会话列表">
+        <Tooltip title="打开会话列表" placement="bottom">
           <Button
             type="text"
             icon={<Menu size={20} />}
@@ -41,7 +41,7 @@ export default function StudioHeader({
           />
         </Tooltip>
         <div {...stylex.props(styles.headerTitle)}>
-          <Tooltip title={conversation.title} mouseEnterDelay={0.5}>
+          <Tooltip title={conversation.title} mouseEnterDelay={0.5} placement="bottom">
             <strong {...stylex.props(styles.headerTitleText)}>{conversation.title}</strong>
           </Tooltip>
           <span {...stylex.props(styles.headerSubtitle)}>{generationCount} 次生成</span>
@@ -50,23 +50,22 @@ export default function StudioHeader({
 
       <div {...stylex.props(styles.headerActions)}>
         <span {...stylex.props(styles.connectionState)}>
-          <Tooltip title={`${connection.description} ${endpointLabel}`}>
-            <Tag color={connection.color} className={stylex.props(styles.statusTag).className}>
-              {connection.label}
-            </Tag>
+          <Tooltip title={`${connection.description} ${endpointLabel}`} placement="bottom">
+            <button
+              type="button"
+              {...stylex.props(styles.connectionTrigger)}
+              aria-label={`打开连接信息：${connection.label}`}
+              onClick={onOpenSettings}
+            >
+              <Tag color={connection.color} className={stylex.props(styles.statusTag).className}>
+                {connection.label}
+              </Tag>
+            </button>
           </Tooltip>
         </span>
         <span {...stylex.props(styles.modelBadge)}>
           {endpointLabel} · {model}
         </span>
-        <Button
-          icon={<Settings size={17} />}
-          aria-label="打开生成设置"
-          className={stylex.props(styles.headerButton).className}
-          onClick={onOpenSettings}
-        >
-          <span {...stylex.props(styles.settingsLabel)}>设置</span>
-        </Button>
       </div>
     </header>
   );
@@ -165,6 +164,18 @@ const styles = stylex.create({
       display: "none",
     },
   },
+  connectionTrigger: {
+    display: "inline-flex",
+    padding: 0,
+    color: "inherit",
+    backgroundColor: "transparent",
+    borderWidth: 0,
+    borderRadius: radii.pill,
+    cursor: "pointer",
+    ":focus-visible": {
+      boxShadow: shadows.focus,
+    },
+  },
   statusTag: {
     minHeight: "28px",
     display: "inline-flex",
@@ -193,8 +204,5 @@ const styles = stylex.create({
     WebkitBackdropFilter: materials.subtle,
     backdropFilter: materials.subtle,
     "@media (max-width: 1050px)": { display: "none" },
-  },
-  settingsLabel: {
-    "@media (max-width: 480px)": { display: "none" },
   },
 });

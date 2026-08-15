@@ -1,4 +1,4 @@
-import type { GenerationSettings, ImageQuality } from "../types";
+import { IMAGE_MODEL, type GenerationSettings, type ImageQuality } from "../types";
 import { migrateImageSize } from "./image-sizes";
 import { isDesktopRuntime } from "./runtime";
 
@@ -9,7 +9,7 @@ const VALID_QUALITIES = new Set<ImageQuality>(["low", "medium", "high"]);
 export const DEFAULT_SETTINGS: GenerationSettings = {
   baseUrl: "",
   apiKey: "",
-  model: "gpt-image-2",
+  model: IMAGE_MODEL,
   size: "1024x1024",
   quality: "medium",
   rememberApiKey: false,
@@ -79,14 +79,20 @@ export function loadSettings(): GenerationSettings {
 export async function hydrateSettingsApiKey(
   settings: GenerationSettings,
 ): Promise<GenerationSettings> {
+  const normalizedSettings = normalizeSettings(settings);
   if (!isDesktopRuntime()) {
-    return settings;
+    cachedSettings = normalizedSettings;
+    return normalizedSettings;
   }
 
   const { loadDesktopApiKey, saveDesktopApiKey } = await import("./desktop-secrets");
   const storedApiKey = await loadDesktopApiKey();
   if (storedApiKey) {
-    const hydrated = { ...settings, apiKey: storedApiKey, rememberApiKey: true };
+    const hydrated = {
+      ...normalizedSettings,
+      apiKey: storedApiKey,
+      rememberApiKey: true,
+    };
     cachedSettings = hydrated;
     persistLocalPreferences(hydrated);
     removeLegacySettings();
@@ -97,7 +103,11 @@ export async function hydrateSettingsApiKey(
   if (pendingLegacyDesktopApiKey) {
     const migratedApiKey = pendingLegacyDesktopApiKey;
     await saveDesktopApiKey(migratedApiKey);
-    const hydrated = { ...settings, apiKey: migratedApiKey, rememberApiKey: true };
+    const hydrated = {
+      ...normalizedSettings,
+      apiKey: migratedApiKey,
+      rememberApiKey: true,
+    };
     cachedSettings = hydrated;
     persistLocalPreferences(hydrated);
     removeLegacySettings();
@@ -105,31 +115,33 @@ export async function hydrateSettingsApiKey(
     return hydrated;
   }
 
-  cachedSettings = { ...settings, apiKey: "" };
+  cachedSettings = { ...normalizedSettings, apiKey: "" };
   persistLocalPreferences(cachedSettings);
   removeLegacySettings();
   return cachedSettings;
 }
 
 export async function saveSettings(settings: GenerationSettings): Promise<void> {
+  const normalizedSettings = normalizeSettings(settings);
   if (isDesktopRuntime()) {
     const { deleteDesktopApiKey, saveDesktopApiKey } = await import("./desktop-secrets");
-    if (settings.rememberApiKey && settings.apiKey) {
-      await saveDesktopApiKey(settings.apiKey);
+    if (normalizedSettings.rememberApiKey && normalizedSettings.apiKey) {
+      await saveDesktopApiKey(normalizedSettings.apiKey);
     } else {
       await deleteDesktopApiKey();
     }
   }
 
-  cachedSettings = settings;
-  persistLocalPreferences(settings);
+  cachedSettings = normalizedSettings;
+  persistLocalPreferences(normalizedSettings);
   removeLegacySettings();
   pendingLegacyDesktopApiKey = null;
 }
 
 export function saveSettingsPreferences(settings: GenerationSettings): void {
-  cachedSettings = settings;
-  persistLocalPreferences(settings);
+  const normalizedSettings = normalizeSettings(settings);
+  cachedSettings = normalizedSettings;
+  persistLocalPreferences(normalizedSettings);
 }
 
 export async function clearStoredSettings(): Promise<GenerationSettings> {
@@ -157,7 +169,7 @@ function deserializeSettings(
       !desktop && stored.rememberApiKey && typeof stored.apiKey === "string"
         ? stored.apiKey
         : "",
-    model: typeof stored.model === "string" && stored.model ? stored.model : "gpt-image-2",
+    model: IMAGE_MODEL,
     size: migrateImageSize(stored.size),
     quality: VALID_QUALITIES.has(stored.quality as ImageQuality)
       ? (stored.quality as ImageQuality)
@@ -174,7 +186,7 @@ function persistLocalPreferences(settings: GenerationSettings): void {
   const stored: StoredSettings = {
     version: 1,
     baseUrl: settings.baseUrl,
-    model: settings.model,
+    model: IMAGE_MODEL,
     size: settings.size,
     quality: settings.quality,
     rememberApiKey: settings.rememberApiKey,
@@ -183,6 +195,10 @@ function persistLocalPreferences(settings: GenerationSettings): void {
       : {}),
   };
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(stored));
+}
+
+function normalizeSettings(settings: GenerationSettings): GenerationSettings {
+  return { ...settings, model: IMAGE_MODEL };
 }
 
 function removeLegacySettings(): void {

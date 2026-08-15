@@ -22,6 +22,7 @@
   --app-scrim: rgb(11 20 40 / 48%);
   --app-primary-hairline: rgb(0 103 217 / 34%);
   --app-selected-shadow: 0 1px 2px rgb(16 52 96 / 10%);
+  --app-layer-accessibility: 2300;
 }
 
 :root[data-theme="dark"] {
@@ -78,7 +79,7 @@ button,
 
 .skip-link {
   position: fixed;
-  z-index: 2000;
+  z-index: var(--app-layer-accessibility);
   top: 8px;
   left: 8px;
   padding: 10px 14px;

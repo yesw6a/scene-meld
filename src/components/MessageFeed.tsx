@@ -235,7 +235,7 @@ function AssistantMessageContent({ message }: { message: AssistantMessage }) {
         </div>
         <div {...stylex.props(styles.loadingCopy)}>
           <strong>正在构图与渲染</strong>
-          <span>高质量图片可能需要数十秒，请保持页面打开。</span>
+          <span>图片生成可能需要数十秒，请保持页面打开。</span>
         </div>
       </div>
     );
@@ -288,7 +288,7 @@ function AssistantMessageActions({
   return (
     <Actions
       variant="borderless"
-      aria-label="AI 消息操作"
+      aria-label="生成结果操作"
       classNames={{ item: stylex.props(styles.actionItem).className ?? "" }}
       items={[
         {
@@ -383,7 +383,7 @@ function DeleteTurnAction({ messageIds, busy, onDelete }: MessageActionsProps) {
   const confirmDelete = () => {
     modal.confirm({
       title: "删除这轮对话？",
-      content: "用户提示词、AI 回答和本地图片都会删除，且无法撤销。",
+      content: "用户提示词、模型回复和本地图片都会删除；应用内无法撤销。",
       okText: "删除",
       cancelText: "取消",
       okType: "danger",

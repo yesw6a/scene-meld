@@ -238,14 +238,6 @@ const styles = stylex.create({
   dock: {
     minWidth: 0,
     padding: "14px 24px 18px",
-    backgroundColor: colors.glassChrome,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: colors.glassBorder,
-    borderRadius: radii.xlarge,
-    boxShadow: shadows.glassStrong,
-    WebkitBackdropFilter: materials.chrome,
-    backdropFilter: materials.chrome,
     "@media (max-width: 767px)": {
       padding: "12px 10px 10px",
     },
