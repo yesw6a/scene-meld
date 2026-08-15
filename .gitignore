@@ -8,8 +8,8 @@ dist/
 src-tauri/target/
 src-tauri/gen/
 src-tauri/tauri.release.conf.json
-scenemeld-updater.key
-scenemeld-updater.key.pub
+secure-keysscenemeld-updater.key
+secure-keysscenemeld-updater.key.pub
 output/
 tmp/
 *.log

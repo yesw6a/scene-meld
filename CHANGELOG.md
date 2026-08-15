@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.3.1 (2026-08-15)
+
+### 📦 Version
+
+- 项目版本从 `1.3.0` 升级到 `1.3.1`。
+- `package.json`、Tauri 配置、Rust crate 与 Cargo lockfile 版本统一为 `1.3.1`。
+
+### 🔄 Changed
+
+- 将根目录 `README.md` 重新编审为默认英文文档，调整 Web/Desktop 运行方式、Endpoint 契约、本地数据边界、开发构建与发布说明的表达和结构。
+- 新增完整的简体中文 `README.zh-CN.md`，并在中英文文档顶部提供双向语言切换。
+- 补充 Tauri updater 公钥、私钥与 GitHub Actions Variables/Secrets 的配置说明，避免混淆公开验证材料和私密签名材料。
+
+### ✅ Verify
+
+- `pnpm.cmd run check` 通过。
+- `pnpm.cmd run build` 通过；Vite 保留主包超过 500 kB 的非阻塞提示。
+- 使用隔离 `CARGO_TARGET_DIR` 运行 `cargo check --locked` 通过；未删除现有 `src-tauri/target` 中指向旧工作区的缓存。
+
 ## v1.3.0 (2026-08-15)
 
 ### 📦 Version
