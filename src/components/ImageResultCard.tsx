@@ -22,6 +22,7 @@ interface ImageResultCardProps {
   onCopyImage: (source: ImageActionSource) => void | Promise<void>;
   onDownloadImage: (source: ImageActionSource) => void | Promise<void>;
   onImageSourceReady: (source: ImageActionSource) => void;
+  variant?: "default" | "batch";
 }
 
 export default function ImageResultCard({
@@ -29,7 +30,10 @@ export default function ImageResultCard({
   onCopyImage,
   onDownloadImage,
   onImageSourceReady,
+  variant = "default",
 }: ImageResultCardProps) {
+  const isBatchPresentation = variant === "batch";
+  const Container = isBatchPresentation ? "div" : "article";
   const [imageUrl, setImageUrl] = useState<string | null>(message.imageDataUrl ?? null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [previewSizing, setPreviewSizing] = useState(() =>
@@ -94,7 +98,7 @@ export default function ImageResultCard({
   }, [imageUrl, message.createdAt, message.mimeType, onImageSourceReady]);
 
   return (
-    <article {...stylex.props(styles.card)} aria-label="生成的图片">
+    <Container {...stylex.props(styles.card)} aria-label="生成的图片">
       {imageUrl ? (
         <ImageContextMenu
           source={{
@@ -106,29 +110,49 @@ export default function ImageResultCard({
           onDownload={onDownloadImage}
         >
           <div
-            {...stylex.props(styles.imageFrame)}
+            {...stylex.props(
+              styles.imageFrame,
+              isBatchPresentation && styles.batchImageFrame,
+            )}
             style={previewSizingStyle(previewSizing)}
           >
-          <Image
-            src={imageUrl}
-            alt="生成结果图片"
-            preview={{ mask: "查看大图" }}
-            width="100%"
-            loading="lazy"
-            className={stylex.props(styles.image).className}
-            onLoad={(event) => {
-              const nextSizing = imagePreviewSizingFromDimensions(
-                event.currentTarget.naturalWidth,
-                event.currentTarget.naturalHeight,
-              );
-              setPreviewSizing(nextSizing);
-            }}
-          />
+            <Image
+              src={imageUrl}
+              alt="生成结果图片"
+              preview={{ mask: "查看大图" }}
+              width="100%"
+              loading="lazy"
+              wrapperStyle={
+                isBatchPresentation
+                  ? { width: "100%", height: "100%", display: "block" }
+                  : undefined
+              }
+              style={
+                isBatchPresentation
+                  ? { width: "100%", height: "100%", objectFit: "contain" }
+                  : undefined
+              }
+              className={stylex.props(styles.image).className}
+              onLoad={(event) => {
+                if (isBatchPresentation) {
+                  return;
+                }
+
+                const nextSizing = imagePreviewSizingFromDimensions(
+                  event.currentTarget.naturalWidth,
+                  event.currentTarget.naturalHeight,
+                );
+                setPreviewSizing(nextSizing);
+              }}
+            />
           </div>
         </ImageContextMenu>
       ) : (
         <div
-          {...stylex.props(styles.imageFrame)}
+          {...stylex.props(
+            styles.imageFrame,
+            isBatchPresentation && styles.batchImageFrame,
+          )}
           style={previewSizingStyle(previewSizing)}
         >
           <div
@@ -141,21 +165,23 @@ export default function ImageResultCard({
         </div>
       )}
 
-      <div {...stylex.props(styles.meta)}>
-        <div {...stylex.props(styles.chips)}>
-          <span>{message.request.model}</span>
-          <span>{imageSizeLabel(message.request.size)}</span>
-          <span>{qualityLabel(message.request.quality)}</span>
-        </div>
+      {!isBatchPresentation ? (
+        <div {...stylex.props(styles.meta)}>
+          <div {...stylex.props(styles.chips)}>
+            <span>{message.request.model}</span>
+            <span>{imageSizeLabel(message.request.size)}</span>
+            <span>{qualityLabel(message.request.quality)}</span>
+          </div>
 
-        {message.revisedPrompt ? (
-          <details {...stylex.props(styles.details)}>
-            <summary>查看修订后的提示词</summary>
-            <p>{message.revisedPrompt}</p>
-          </details>
-        ) : null}
-      </div>
-    </article>
+          {message.revisedPrompt ? (
+            <details {...stylex.props(styles.details)}>
+              <summary>查看修订后的提示词</summary>
+              <p>{message.revisedPrompt}</p>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+    </Container>
   );
 }
 
@@ -206,6 +232,12 @@ const styles = stylex.create({
       transitionDuration: "0ms",
       transform: "none",
     },
+  },
+  batchImageFrame: {
+    width: "100%",
+    aspectRatio: "var(--preview-aspect-ratio)",
+    display: "grid",
+    placeItems: "center",
   },
   image: {
     width: "100%",

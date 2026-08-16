@@ -24,6 +24,8 @@ import {
   prepareImageAttachments,
   resolveMessageImageAttachments,
 } from "./lib/image-attachments";
+import { normalizeImageQuantity } from "./lib/image-batch";
+import { runImageGenerationBatch } from "./lib/image-batch-generation";
 import { endpointHostLabel } from "./lib/image-endpoint";
 import {
   copyImageFromUrl,
@@ -253,15 +255,104 @@ export default function StudioApp() {
       const assistantId = createId("assistant");
       const now = Date.now();
       const attachmentSources = attachmentSourcesOverride ?? draftImageSources;
+      const quantity = normalizeImageQuantity(
+        snapshotOverride?.quantity ?? settings.quantity,
+      );
       const requestSnapshot: GenerationSnapshot = {
         model: IMAGE_MODEL,
         size: snapshotOverride?.size ?? settings.size,
         quality: snapshotOverride?.quality ?? settings.quality,
+        quantity,
       };
       const requestSettings: GenerationRequestSettings = {
         ...settings,
         ...requestSnapshot,
       };
+
+      if (quantity > 1) {
+        const batchId = createId("batch");
+        const controller = new AbortController();
+        let storageWarningShown = false;
+        abortRef.current = controller;
+        setIsGenerating(true);
+
+        try {
+          const outcome = await runImageGenerationBatch({
+            prompt,
+            batchId,
+            quantity,
+            requestSettings,
+            requestSnapshot,
+            attachmentSources,
+            storageAvailable,
+            createdAt: now,
+            signal: controller.signal,
+            onPrepared: (assistants, prepared) => {
+              updateConversation(conversationId, (conversation) => ({
+                ...conversation,
+                title: titleForSubmittedPrompt(conversation, prompt),
+                messages: [
+                  ...conversation.messages,
+                  {
+                    id: userId,
+                    type: "user",
+                    prompt,
+                    createdAt: now,
+                    batchId,
+                    ...(prepared.messageAttachments.length > 0
+                      ? { attachments: prepared.messageAttachments }
+                      : {}),
+                  },
+                  ...assistants,
+                ],
+                updatedAt: now,
+              }));
+              if (attachmentSourcesOverride === undefined) {
+                setDraft("");
+                clearDraftImages();
+              }
+            },
+            onUpdate: (assistantId, patch) =>
+              updateAssistantMessage(conversationId, assistantId, patch),
+            onStorageWarning: (kind) => {
+              if (storageWarningShown) {
+                return;
+              }
+              storageWarningShown = true;
+              setStorageAvailable(false);
+              toast.warning(
+                kind === "input"
+                  ? "参考图仍可用于本次请求，但无法保存到本地；刷新页面后可能无法再次编辑。"
+                  : "图片已生成，但无法保存到本地。请在关闭页面前下载图片。",
+              );
+            },
+          });
+
+          if (outcome.successfulCount > 0) {
+            setLastConnectionStatus("success");
+          } else if (outcome.failedCount > 0) {
+            setLastConnectionStatus("error");
+          } else if (outcome.cancelledCount > 0) {
+            setLastConnectionStatus("ready");
+          }
+        } catch (error) {
+          if (!controller.signal.aborted) {
+            setLastConnectionStatus("error");
+            toast.error(
+              error instanceof Error
+                ? error.message
+                : "批量生成无法启动，请检查连接设置后重试。",
+            );
+          }
+        } finally {
+          if (abortRef.current === controller) {
+            abortRef.current = null;
+          }
+          setIsGenerating(false);
+        }
+        return;
+      }
+
       const controller = new AbortController();
       abortRef.current = controller;
       setIsGenerating(true);
@@ -563,7 +654,7 @@ export default function StudioApp() {
 
       await submitPrompt(
         item.prompt,
-        item.request,
+        { ...item.request, quantity: 1 },
         activeConversation?.id,
         resolved.sources,
       );

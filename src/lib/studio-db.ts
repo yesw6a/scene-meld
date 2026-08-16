@@ -1,6 +1,7 @@
 import { openDB, type DBSchema } from "idb";
 
 import { restoreLegacyConversationTitle } from "./conversations";
+import { normalizeImageQuantity } from "./image-batch";
 import type {
   AssistantMessage,
   ChatMessage,
@@ -191,6 +192,16 @@ function restoreConversation(conversation: StoredConversation): Conversation {
   const titleMode = conversation.titleMode ?? "manual";
   let interrupted = false;
   const messages = conversation.messages.map((message): ChatMessage => {
+    if (message.type === "assistant") {
+      message = {
+        ...message,
+        request: {
+          ...message.request,
+          quantity: normalizeImageQuantity(message.request?.quantity),
+        },
+      };
+    }
+
     if (message.type !== "assistant" || message.status !== "loading") {
       return message;
     }

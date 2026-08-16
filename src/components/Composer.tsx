@@ -213,6 +213,27 @@ export default function Composer({
                       onChange={(quality) => onQuickSettingChange({ quality })}
                     />
                   </label>
+                  <label {...stylex.props(styles.quickSetting)}>
+                    <span>生成数量</span>
+                    <Select<number>
+                      size="small"
+                      value={settings.quantity}
+                      aria-label="生成数量"
+                      disabled={loading}
+                      options={QUANTITY_OPTIONS}
+                      popupMatchSelectWidth={108}
+                      placement="topLeft"
+                      classNames={{
+                        content: stylex.props(styles.selectValue).className ?? "",
+                        popup: {
+                          root: "studio-select-popup studio-quantity-select-popup",
+                          listItem: "studio-select-option",
+                        },
+                      }}
+                      className={stylex.props(styles.quantitySelect).className}
+                      onChange={(quantity) => onQuickSettingChange({ quantity })}
+                    />
+                  </label>
                 </div>
                 <span {...stylex.props(styles.hint)}>
                   {value.length.toLocaleString()} / 20,000
@@ -233,6 +254,11 @@ const QUALITY_OPTIONS = [
 ] satisfies { label: string; value: ImageQuality }[];
 
 const IMAGE_SIZE_OPTIONS_FOR_SELECT = IMAGE_SIZE_OPTIONS.map((option) => ({ ...option }));
+
+const QUANTITY_OPTIONS = Array.from({ length: 9 }, (_, index) => ({
+  label: `${index + 1} 张`,
+  value: index + 1,
+}));
 
 const styles = stylex.create({
   dock: {
@@ -363,6 +389,9 @@ const styles = stylex.create({
   },
   qualitySelect: {
     width: "76px",
+  },
+  quantitySelect: {
+    width: "72px",
   },
   selectValue: {
     color: colors.ink,

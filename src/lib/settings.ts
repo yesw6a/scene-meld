@@ -1,4 +1,10 @@
-import { IMAGE_MODEL, type GenerationSettings, type ImageQuality } from "../types";
+import {
+  DEFAULT_IMAGE_QUANTITY,
+  IMAGE_MODEL,
+  type GenerationSettings,
+  type ImageQuality,
+} from "../types";
+import { normalizeImageQuantity } from "./image-batch";
 import { migrateImageSize } from "./image-sizes";
 import { isDesktopRuntime } from "./runtime";
 
@@ -12,6 +18,7 @@ export const DEFAULT_SETTINGS: GenerationSettings = {
   model: IMAGE_MODEL,
   size: "1024x1024",
   quality: "medium",
+  quantity: DEFAULT_IMAGE_QUANTITY,
   rememberApiKey: false,
 };
 
@@ -21,6 +28,7 @@ interface StoredSettings {
   model: string;
   size: string;
   quality: ImageQuality;
+  quantity?: number;
   rememberApiKey: boolean;
   apiKey?: string;
 }
@@ -174,6 +182,7 @@ function deserializeSettings(
     quality: VALID_QUALITIES.has(stored.quality as ImageQuality)
       ? (stored.quality as ImageQuality)
       : "medium",
+    quantity: normalizeImageQuantity(stored.quantity),
     rememberApiKey: stored.rememberApiKey === true,
   };
 }
@@ -189,6 +198,7 @@ function persistLocalPreferences(settings: GenerationSettings): void {
     model: IMAGE_MODEL,
     size: settings.size,
     quality: settings.quality,
+    quantity: normalizeImageQuantity(settings.quantity),
     rememberApiKey: settings.rememberApiKey,
     ...(!isDesktopRuntime() && settings.rememberApiKey && settings.apiKey
       ? { apiKey: settings.apiKey }
@@ -198,7 +208,11 @@ function persistLocalPreferences(settings: GenerationSettings): void {
 }
 
 function normalizeSettings(settings: GenerationSettings): GenerationSettings {
-  return { ...settings, model: IMAGE_MODEL };
+  return {
+    ...settings,
+    model: IMAGE_MODEL,
+    quantity: normalizeImageQuantity(settings.quantity),
+  };
 }
 
 function removeLegacySettings(): void {

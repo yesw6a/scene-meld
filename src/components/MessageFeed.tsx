@@ -26,6 +26,8 @@ import type { AssistantMessage, ChatMessage, UserMessage } from "../types";
 import { colors, materials, motion, radii, shadows } from "../styles/tokens.stylex";
 import ImageResultCard from "./ImageResultCard";
 import UserMessageContent from "./UserMessageContent";
+import BatchImageGrid from "./BatchImageGrid";
+import BatchImageTile from "./BatchImageTile";
 
 interface MessageFeedProps {
   conversationId: string;
@@ -44,7 +46,7 @@ interface MessageFeedProps {
 interface MessageTurn {
   id: string;
   user?: UserMessage;
-  assistant?: AssistantMessage;
+  assistants: AssistantMessage[];
   messageIds: string[];
 }
 
@@ -161,9 +163,43 @@ export default function MessageFeed({
                 </div>
               ) : null}
 
-              {turn.assistant ? (
+              {turn.assistants.length > 1 ? (
+                <BatchImageGrid
+                  messages={turn.assistants}
+                  headerAction={
+                    <DeleteTurnAction
+                      messageIds={turn.messageIds}
+                      busy={busy}
+                      onDelete={onDelete}
+                    />
+                  }
+                  renderTile={(message, index) => (
+                    <BatchImageTile
+                      message={message}
+                      index={index}
+                      total={turn.assistants.length}
+                      actions={
+                        <AssistantMessageActions
+                          message={message}
+                          messageIds={turn.messageIds}
+                          busy={busy}
+                          onDownload={onDownload}
+                          onRegenerate={onRegenerate}
+                          onContinueEditing={onContinueEditing}
+                          onDelete={onDelete}
+                          source={turn.user}
+                          variant="batch"
+                        />
+                      }
+                      onCopyImage={onCopyImage}
+                      onDownloadImage={onDownloadImage}
+                      onImageSourceReady={registerImageSource}
+                    />
+                  )}
+                />
+              ) : turn.assistants[0] ? (
                 <AssistantMessageView
-                  message={turn.assistant}
+                  message={turn.assistants[0]}
                   messageIds={turn.messageIds}
                   busy={busy}
                   onCopyImage={onCopyImage}
@@ -389,12 +425,14 @@ function AssistantMessageActions({
   onContinueEditing,
   onDelete,
   source,
+  variant = "default",
 }: MessageActionsProps & {
   message: AssistantMessage;
   onDownload: (message: AssistantMessage) => void | Promise<void>;
   onRegenerate: (message: AssistantMessage, source?: UserMessage) => void;
   onContinueEditing: (message: AssistantMessage) => void;
   source?: UserMessage;
+  variant?: "default" | "batch";
 }) {
   const loading = message.status === "loading";
   const imageReady = message.status === "success";
@@ -402,7 +440,7 @@ function AssistantMessageActions({
   return (
     <Actions
       variant="borderless"
-      aria-label="生成结果操作"
+      aria-label={variant === "batch" ? "批量结果单图操作" : "生成结果操作"}
       classNames={{ item: stylex.props(styles.actionItem).className ?? "" }}
       items={[
         {
@@ -436,18 +474,22 @@ function AssistantMessageActions({
               <ActionButton icon={<RefreshCw size={15} />} label="重新生成" disabled />
             ),
         },
-        {
-          key: "delete-turn",
-          label: "删除这轮对话",
-          danger: true,
-          actionRender: (
-            <DeleteTurnAction
-              messageIds={messageIds}
-              busy={busy}
-              onDelete={onDelete}
-            />
-          ),
-        },
+        ...(variant === "batch"
+          ? []
+          : [
+              {
+                key: "delete-turn",
+                label: "删除这轮对话",
+                danger: true,
+                actionRender: (
+                  <DeleteTurnAction
+                    messageIds={messageIds}
+                    busy={busy}
+                    onDelete={onDelete}
+                  />
+                ),
+              },
+            ]),
       ]}
     />
   );
@@ -525,17 +567,31 @@ function groupMessageTurns(messages: ChatMessage[]): MessageTurn[] {
   for (const message of messages) {
     const latest = turns.at(-1);
     if (message.type === "user") {
-      turns.push({ id: message.id, user: message, messageIds: [message.id] });
+      turns.push({
+        id: message.id,
+        user: message,
+        assistants: [],
+        messageIds: [message.id],
+      });
       continue;
     }
 
-    if (latest?.user && !latest.assistant) {
-      latest.assistant = message;
+    const sameBatch =
+      Boolean(message.batchId) && message.batchId === latest?.user?.batchId;
+    if (
+      latest?.user &&
+      (latest.assistants.length === 0 || sameBatch)
+    ) {
+      latest.assistants.push(message);
       latest.messageIds.push(message.id);
       continue;
     }
 
-    turns.push({ id: message.id, assistant: message, messageIds: [message.id] });
+    turns.push({
+      id: message.id,
+      assistants: [message],
+      messageIds: [message.id],
+    });
   }
 
   return turns;
@@ -793,6 +849,12 @@ const styles = stylex.create({
     borderColor: colors.border,
   },
   endSentinel: {
+    blockSize: "76px",
+    flex: "0 0 76px",
     scrollMarginBottom: "24px",
+    "@media (max-width: 767px)": {
+      blockSize: "64px",
+      flex: "0 0 64px",
+    },
   },
 });

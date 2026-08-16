@@ -1,4 +1,7 @@
 export const IMAGE_MODEL = "gpt-image-2" as const;
+export const MAX_IMAGE_BATCH_SIZE = 9;
+export const DEFAULT_IMAGE_QUANTITY = 1;
+export const IMAGE_BATCH_CONCURRENCY = 3;
 
 export type ImageQuality = "low" | "medium" | "high";
 export type ImageSize = "1536x864" | "864x1536" | "1024x1024";
@@ -12,6 +15,7 @@ export interface GenerationSettings {
   model: string;
   size: ImageSize;
   quality: ImageQuality;
+  quantity: number;
   rememberApiKey: boolean;
 }
 
@@ -19,6 +23,7 @@ export interface GenerationSnapshot {
   model: string;
   size: ImageRequestSize;
   quality: ImageQuality;
+  quantity: number;
 }
 
 export type GenerationRequestSettings = Omit<GenerationSettings, "size"> & {
@@ -52,10 +57,12 @@ export interface UserMessage {
   type: "user";
   prompt: string;
   createdAt: number;
+  batchId?: string;
   attachments?: MessageImageAttachment[];
 }
 
 export type AssistantStatus = "loading" | "success" | "error" | "aborted";
+export type ImageAspectStatus = "matched" | "mismatched" | "unverified" | "retrying";
 
 export interface AssistantMessage {
   id: string;
@@ -64,6 +71,13 @@ export interface AssistantMessage {
   status: AssistantStatus;
   request: GenerationSnapshot;
   createdAt: number;
+  batchId?: string;
+  batchIndex?: number;
+  batchSize?: number;
+  actualWidth?: number;
+  actualHeight?: number;
+  aspectStatus?: ImageAspectStatus;
+  aspectRetried?: boolean;
   imageId?: string;
   imageDataUrl?: string;
   mimeType?: string;
