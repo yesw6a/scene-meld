@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as stylex from "@stylexjs/stylex";
 import {
   Alert,
@@ -6,10 +6,8 @@ import {
   Divider,
   Drawer,
   Form,
-  Input,
   App as AntdApp,
   Select,
-  Switch,
   Tag,
   Typography,
 } from "antd";
@@ -19,7 +17,6 @@ import {
   KeyRound,
   RotateCcw,
   Save,
-  ShieldAlert,
   SlidersHorizontal,
   Trash2,
 } from "lucide-react";
@@ -35,8 +32,15 @@ import {
   normalizeImageApiBaseUrl,
 } from "../lib/image-endpoint";
 import { isDesktopRuntime } from "../lib/runtime";
-import { IMAGE_MODEL, type GenerationSettings, type ImageQuality, type ImageSize } from "../types";
+import { listConversationModels } from "../lib/conversation-models";
+import ConnectionSettingsSection from "./ConnectionSettingsSection";
+import { DEFAULT_CONVERSATION_MODEL, IMAGE_MODEL, type ConversationSettings, type GenerationSettings, type ImageQuality, type ImageSize } from "../types";
 import { colors, motion, radii } from "../styles/tokens.stylex";
+
+type ConversationCredentialDraft = Pick<
+  ConversationSettings,
+  "baseUrl" | "apiKey" | "rememberApiKey"
+>;
 
 interface SettingsDrawerProps {
   open: boolean;
@@ -68,8 +72,13 @@ export default function SettingsDrawer({
   const { modal } = AntdApp.useApp();
   const [draft, setDraft] = useState(settings);
   const [endpointError, setEndpointError] = useState<string>();
+  const [conversationEndpointError, setConversationEndpointError] = useState<string>();
   const [formError, setFormError] = useState<string>();
   const [saving, setSaving] = useState(false);
+  const [modelOptions, setModelOptions] = useState<string[]>([]);
+  const [modelLoading, setModelLoading] = useState(false);
+  const [modelError, setModelError] = useState<string>();
+  const independentConversationDraft = useRef<ConversationCredentialDraft | null>(null);
   const desktop = isDesktopRuntime();
   const dataOnly = section === "data";
   const requestEndpoint = previewGenerationEndpoint(draft.baseUrl);
@@ -79,15 +88,113 @@ export default function SettingsDrawer({
     if (open) {
       setDraft(settings);
       setEndpointError(undefined);
+      setConversationEndpointError(undefined);
       setFormError(undefined);
+      setModelOptions([]);
+      setModelError(undefined);
+      independentConversationDraft.current = settings.conversation.shareImageConnection
+        ? null
+        : pickConversationCredentials(settings.conversation);
     }
   }, [open, section, settings]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setModelOptions([]);
+    setModelError(undefined);
+  }, [
+    draft.baseUrl,
+    draft.apiKey,
+    draft.conversation.baseUrl,
+    draft.conversation.apiKey,
+    draft.conversation.enabled,
+    draft.conversation.shareImageConnection,
+    open,
+  ]);
+
+  useEffect(() => {
+    if (!open || draft.conversation.shareImageConnection) {
+      return;
+    }
+
+    independentConversationDraft.current = pickConversationCredentials(draft.conversation);
+  }, [
+    draft.conversation.apiKey,
+    draft.conversation.baseUrl,
+    draft.conversation.rememberApiKey,
+    draft.conversation.shareImageConnection,
+    open,
+  ]);
 
   const updateDraft = <Key extends keyof GenerationSettings>(
     key: Key,
     value: GenerationSettings[Key],
   ) => {
-    setDraft((current) => ({ ...current, [key]: value }));
+    setDraft((current) => key === "rememberApiKey"
+      ? {
+          ...current,
+          rememberApiKey: value as boolean,
+          conversation: { ...current.conversation, rememberApiKey: value as boolean },
+        }
+      : { ...current, [key]: value });
+  };
+
+  const updateConversation = <Key extends keyof ConversationSettings>(
+    key: Key,
+    value: ConversationSettings[Key],
+  ) => {
+    setDraft((current) => ({
+      ...current,
+      conversation: { ...current.conversation, [key]: value },
+    }));
+  };
+
+  const handleConnectionModeChange = (shared: boolean) => {
+    setDraft((current) => {
+      if (current.conversation.shareImageConnection === shared) {
+        return current;
+      }
+
+      if (shared) {
+        independentConversationDraft.current = pickConversationCredentials(current.conversation);
+        return {
+          ...current,
+          conversation: { ...current.conversation, shareImageConnection: true },
+        };
+      }
+
+      const restored = independentConversationDraft.current;
+      return {
+        ...current,
+        conversation: {
+          ...current.conversation,
+          ...(restored ?? {}),
+          shareImageConnection: false,
+        },
+      };
+    });
+    setEndpointError(undefined);
+    setConversationEndpointError(undefined);
+    setFormError(undefined);
+  };
+
+  const handleDiscoverModels = async () => {
+    const conversation = draft.conversation.shareImageConnection
+      ? { baseUrl: draft.baseUrl, apiKey: draft.apiKey }
+      : { baseUrl: draft.conversation.baseUrl, apiKey: draft.conversation.apiKey };
+    setModelLoading(true);
+    setModelError(undefined);
+    try {
+      const options = await listConversationModels(conversation);
+      setModelOptions(options);
+    } catch (error) {
+      setModelOptions([]);
+      setModelError(error instanceof Error ? error.message : "无法获取模型列表，请手动填写。");
+    } finally {
+      setModelLoading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -97,6 +204,7 @@ export default function SettingsDrawer({
 
     if (section === "workspace") {
       setFormError(undefined);
+      setConversationEndpointError(undefined);
       setSaving(true);
       try {
         await onSave({ ...draft, model: IMAGE_MODEL });
@@ -112,8 +220,27 @@ export default function SettingsDrawer({
       normalizedBaseUrl = normalizeImageApiBaseUrl(draft.baseUrl);
     } catch (error) {
       setEndpointError(error instanceof Error ? error.message : "请输入有效的 HTTPS 地址。");
+      setConversationEndpointError(undefined);
       setFormError(undefined);
       return;
+    }
+
+    let conversationBaseUrl = draft.conversation.baseUrl.trim();
+    if (draft.conversation.enabled && !draft.conversation.shareImageConnection) {
+      try {
+        conversationBaseUrl = normalizeImageApiBaseUrl(conversationBaseUrl);
+      } catch (error) {
+        setEndpointError(undefined);
+        setConversationEndpointError(error instanceof Error ? error.message : "请输入有效的对话 AI Endpoint。 ");
+        setFormError(undefined);
+        return;
+      }
+      if (!draft.conversation.apiKey.trim()) {
+        setEndpointError(undefined);
+        setConversationEndpointError(undefined);
+        setFormError("请填写对话 AI API Key。 ");
+        return;
+      }
     }
 
     const trimmed = {
@@ -121,15 +248,24 @@ export default function SettingsDrawer({
       baseUrl: normalizedBaseUrl,
       apiKey: draft.apiKey.trim(),
       model: IMAGE_MODEL,
+      conversation: {
+        ...draft.conversation,
+        baseUrl: conversationBaseUrl,
+        apiKey: draft.conversation.apiKey.trim(),
+        model: draft.conversation.model.trim() || DEFAULT_CONVERSATION_MODEL,
+        rememberApiKey: draft.rememberApiKey,
+      },
     };
 
     if (!trimmed.apiKey) {
       setEndpointError(undefined);
+      setConversationEndpointError(undefined);
       setFormError("请填写 API Key。");
       return;
     }
 
     setEndpointError(undefined);
+    setConversationEndpointError(undefined);
     setFormError(undefined);
     setSaving(true);
     try {
@@ -142,7 +278,9 @@ export default function SettingsDrawer({
   const handleReset = async () => {
     await onReset();
     setEndpointError(undefined);
+    setConversationEndpointError(undefined);
     setFormError(undefined);
+    independentConversationDraft.current = null;
   };
 
   const confirmClearHistory = () => {
@@ -185,15 +323,15 @@ export default function SettingsDrawer({
             <SlidersHorizontal aria-hidden="true" size={19} strokeWidth={1.8} />
           )}
           {section === "connection"
-            ? "连接信息"
+             ? "连接配置"
             : section === "data"
               ? "本地数据"
               : "工作区设置"}
         </span>
       }
-      width="min(420px, 100vw)"
+      width={section === "connection" ? "min(800px, 100vw)" : "min(420px, 100vw)"}
       open={open}
-      rootClassName="studio-glass-drawer"
+      rootClassName={`studio-glass-drawer${section === "connection" ? " studio-connection-drawer" : ""}`}
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
@@ -211,6 +349,7 @@ export default function SettingsDrawer({
               保存设置
             </Button>
           ) : null}
+
         </div>
       }
     >
@@ -219,94 +358,21 @@ export default function SettingsDrawer({
           {formError ? <Alert type="error" showIcon message={formError} /> : null}
 
           {section === "connection" ? (
-            <>
-              <section {...stylex.props(styles.section)} aria-labelledby="connection-heading">
-            <div {...stylex.props(styles.sectionHeading)}>
-              <Typography.Title id="connection-heading" level={5}>
-                {desktop ? "设备直连" : "API 直连"}
-              </Typography.Title>
-              <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-                {desktop
-                  ? "图片请求由桌面应用发送到你填写的兼容 Endpoint；本项目不提供图片请求中转服务，桌面版不受浏览器 CORS 限制。"
-                  : "SceneMeld Web 是纯静态页面，浏览器会将图片请求发送到你填写的兼容 Endpoint；目标服务需要支持 CORS。"}
-              </Typography.Paragraph>
-            </div>
-
-            <Form.Item
-              label="API 基础地址"
-              required
-              validateStatus={endpointError ? "error" : undefined}
-              help={
-                endpointError ||
-                `${desktop ? "桌面正式构建" : "Web 版"}仅支持 HTTPS，地址通常以 /v1 结尾。`
-              }
-            >
-              <Input
-                value={draft.baseUrl}
-                inputMode="url"
-                autoComplete="url"
-                placeholder="https://relay.example.com/v1"
-                onChange={(event) => updateDraft("baseUrl", event.target.value)}
-              />
-            </Form.Item>
-
-            <div {...stylex.props(styles.endpointPreview)} aria-live="polite">
-              <span>{requestHost ? `API Key 将发送至 ${requestHost}` : "实际请求"}</span>
-              <code>{requestEndpoint ? `POST ${requestEndpoint}` : "填写有效地址后显示"}</code>
-              {requestHost ? <small>本项目不提供图片请求中转服务。</small> : null}
-            </div>
-
-            <Form.Item
-              label="API Key"
-              required
-              help={
-                requestHost
-                  ? `生成请求会发送到 ${requestHost}；本项目不提供图片请求中转服务。`
-                  : "生成请求会发送到目标 Endpoint；本项目不提供图片请求中转服务。"
-              }
-            >
-              <Input.Password
-                value={draft.apiKey}
-                autoComplete="off"
-                placeholder="输入 API Key"
-                onChange={(event) => updateDraft("apiKey", event.target.value)}
-              />
-            </Form.Item>
-
-            <label {...stylex.props(styles.switchRow)}>
-              <span>
-                <strong>{desktop ? "尝试保存 API Key 到系统凭据管理器" : "保存 API Key 到此浏览器"}</strong>
-                <small>
-                  {draft.rememberApiKey
-                    ? desktop
-                      ? "应用会尝试在重新打开时读取；具体保护能力取决于系统和账户配置。"
-                      : "刷新页面后仍会保留。"
-                    : desktop
-                      ? "仅保留到本次应用会话结束。"
-                      : "仅保留到页面刷新前。"}
-                </small>
-              </span>
-              <Switch
-                checked={draft.rememberApiKey}
-                onChange={(checked) => updateDraft("rememberApiKey", checked)}
-              />
-            </label>
-
-            {draft.rememberApiKey ? (
-              <Alert
-                showIcon
-                icon={<ShieldAlert size={18} />}
-                type={desktop ? "info" : "warning"}
-                message={desktop ? "尝试使用系统凭据管理器" : "浏览器本地保存"}
-                description={
-                  desktop
-                    ? "应用会请求操作系统凭据管理器保存 API Key；具体保护能力取决于操作系统和账户配置。"
-                    : "API Key 会写入此浏览器的 localStorage，同源脚本和浏览器扩展可能读取它。"
-                }
-              />
-            ) : null}
-              </section>
-            </>
+            <ConnectionSettingsSection
+              draft={draft}
+              desktop={desktop}
+              endpointError={endpointError}
+              conversationEndpointError={conversationEndpointError}
+              requestEndpoint={requestEndpoint}
+              requestHost={requestHost}
+              onUpdate={updateDraft}
+              onUpdateConversation={updateConversation}
+              onConnectionModeChange={handleConnectionModeChange}
+              modelOptions={modelOptions}
+              modelLoading={modelLoading}
+              modelError={modelError}
+              onDiscoverModels={() => void handleDiscoverModels()}
+            />
           ) : null}
 
           {section === "workspace" ? (
@@ -465,6 +531,16 @@ function previewGenerationEndpoint(baseUrl: string): string | null {
   }
 }
 
+function pickConversationCredentials(
+  conversation: ConversationSettings,
+): ConversationCredentialDraft {
+  return {
+    baseUrl: conversation.baseUrl,
+    apiKey: conversation.apiKey,
+    rememberApiKey: conversation.rememberApiKey,
+  };
+}
+
 const QUALITY_OPTIONS = [
   { label: "低", value: "low" },
   { label: "中", value: "medium" },
@@ -533,21 +609,6 @@ const styles = stylex.create({
     justifyContent: "space-between",
     gap: "12px",
   },
-  endpointPreview: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "5px",
-    padding: "11px 12px",
-    marginTop: "-8px",
-    marginBottom: "10px",
-    color: colors.muted,
-    fontSize: "12px",
-    backgroundColor: colors.glassSubtle,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: colors.glassBorder,
-    borderRadius: radii.medium,
-  },
   fixedModel: {
     minHeight: "40px",
     display: "flex",
@@ -563,15 +624,6 @@ const styles = stylex.create({
   fixedModelHint: {
     color: colors.muted,
     fontSize: "12px",
-  },
-  switchRow: {
-    minHeight: "56px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "16px",
-    cursor: "pointer",
-    color: colors.ink,
   },
   twoColumns: {
     display: "grid",

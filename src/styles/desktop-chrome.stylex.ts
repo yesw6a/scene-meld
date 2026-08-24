@@ -30,6 +30,11 @@ export const desktopModalOverlayStyles = {
   mask: {
     top: desktopChrome.height,
   },
+  wrapper: {
+    top: desktopChrome.height,
+    height: `calc(100% - ${desktopChrome.height})`,
+  },
 } satisfies {
   mask: CSSProperties;
+  wrapper: CSSProperties;
 };

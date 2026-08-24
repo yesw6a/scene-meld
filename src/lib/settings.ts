@@ -1,7 +1,10 @@
 import {
+  DEFAULT_CONVERSATION_MODEL,
   DEFAULT_IMAGE_QUANTITY,
   IMAGE_MODEL,
   type GenerationSettings,
+  type ConversationSettings,
+  type GenerationMode,
   type ImageQuality,
 } from "../types";
 import { normalizeImageQuantity } from "./image-batch";
@@ -11,6 +14,18 @@ import { isDesktopRuntime } from "./runtime";
 const STORAGE_KEY = "scenemeld.settings.v1";
 const LEGACY_STORAGE_KEY = "gpt-image-2-studio.settings.v1";
 const VALID_QUALITIES = new Set<ImageQuality>(["low", "medium", "high"]);
+const VALID_MODES = new Set<GenerationMode>(["direct", "variations", "storyboard"]);
+
+export const DEFAULT_CONVERSATION_SETTINGS: ConversationSettings = {
+  enabled: true,
+  baseUrl: "",
+  apiKey: "",
+  model: DEFAULT_CONVERSATION_MODEL,
+  supportsVision: false,
+  supportsStructuredOutput: true,
+  rememberApiKey: false,
+  shareImageConnection: true,
+};
 
 export const DEFAULT_SETTINGS: GenerationSettings = {
   baseUrl: "",
@@ -20,6 +35,9 @@ export const DEFAULT_SETTINGS: GenerationSettings = {
   quality: "medium",
   quantity: DEFAULT_IMAGE_QUANTITY,
   rememberApiKey: false,
+  mode: "direct",
+  storyboardQuantity: "auto",
+  conversation: { ...DEFAULT_CONVERSATION_SETTINGS },
 };
 
 interface StoredSettings {
@@ -31,6 +49,9 @@ interface StoredSettings {
   quantity?: number;
   rememberApiKey: boolean;
   apiKey?: string;
+  mode?: GenerationMode;
+  storyboardQuantity?: number | "auto";
+  conversation?: Partial<ConversationSettings>;
 }
 
 let cachedSettings: GenerationSettings | null = null;
@@ -93,13 +114,31 @@ export async function hydrateSettingsApiKey(
     return normalizedSettings;
   }
 
-  const { loadDesktopApiKey, saveDesktopApiKey } = await import("./desktop-secrets");
-  const storedApiKey = await loadDesktopApiKey();
-  if (storedApiKey) {
+  const { loadDesktopApiKey, loadDesktopConversationApiKey, saveDesktopApiKey } = await import("./desktop-secrets");
+  const [storedApiKey, storedConversationApiKey] = await Promise.all([
+    loadDesktopApiKey(),
+    loadDesktopConversationApiKey(),
+  ]);
+  if (storedApiKey || storedConversationApiKey) {
+    if (storedApiKey) {
+      await saveDesktopApiKey(storedApiKey);
+    }
     const hydrated = {
       ...normalizedSettings,
-      apiKey: storedApiKey,
+      apiKey: storedApiKey ?? "",
       rememberApiKey: true,
+      conversation: normalizedSettings.conversation.shareImageConnection
+        ? {
+            ...normalizedSettings.conversation,
+            baseUrl: normalizedSettings.baseUrl,
+            apiKey: storedApiKey ?? "",
+            rememberApiKey: true,
+          }
+        : {
+            ...normalizedSettings.conversation,
+            apiKey: normalizedSettings.conversation.enabled ? storedConversationApiKey ?? "" : "",
+            rememberApiKey: true,
+          },
     };
     cachedSettings = hydrated;
     persistLocalPreferences(hydrated);
@@ -115,6 +154,13 @@ export async function hydrateSettingsApiKey(
       ...normalizedSettings,
       apiKey: migratedApiKey,
       rememberApiKey: true,
+      conversation: normalizedSettings.conversation.shareImageConnection
+        ? {
+            ...normalizedSettings.conversation,
+            baseUrl: normalizedSettings.baseUrl,
+            apiKey: migratedApiKey,
+          }
+        : normalizedSettings.conversation,
     };
     cachedSettings = hydrated;
     persistLocalPreferences(hydrated);
@@ -132,11 +178,21 @@ export async function hydrateSettingsApiKey(
 export async function saveSettings(settings: GenerationSettings): Promise<void> {
   const normalizedSettings = normalizeSettings(settings);
   if (isDesktopRuntime()) {
-    const { deleteDesktopApiKey, saveDesktopApiKey } = await import("./desktop-secrets");
+    const { deleteDesktopApiKey, deleteDesktopConversationApiKey, saveDesktopApiKey, saveDesktopConversationApiKey } = await import("./desktop-secrets");
     if (normalizedSettings.rememberApiKey && normalizedSettings.apiKey) {
       await saveDesktopApiKey(normalizedSettings.apiKey);
     } else {
       await deleteDesktopApiKey();
+    }
+    if (
+      !normalizedSettings.conversation.shareImageConnection &&
+      normalizedSettings.conversation.enabled &&
+      normalizedSettings.rememberApiKey &&
+      normalizedSettings.conversation.apiKey
+    ) {
+      await saveDesktopConversationApiKey(normalizedSettings.conversation.apiKey);
+    } else {
+      await deleteDesktopConversationApiKey();
     }
   }
 
@@ -154,8 +210,8 @@ export function saveSettingsPreferences(settings: GenerationSettings): void {
 
 export async function clearStoredSettings(): Promise<GenerationSettings> {
   if (isDesktopRuntime()) {
-    const { deleteDesktopApiKey } = await import("./desktop-secrets");
-    await deleteDesktopApiKey();
+    const { deleteDesktopApiKey, deleteDesktopConversationApiKey } = await import("./desktop-secrets");
+    await Promise.all([deleteDesktopApiKey(), deleteDesktopConversationApiKey()]);
   }
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(STORAGE_KEY);
@@ -184,6 +240,16 @@ function deserializeSettings(
       : "medium",
     quantity: normalizeImageQuantity(stored.quantity),
     rememberApiKey: stored.rememberApiKey === true,
+    mode: VALID_MODES.has(stored.mode as GenerationMode)
+      ? (stored.mode as GenerationMode)
+      : "direct",
+    storyboardQuantity:
+      stored.storyboardQuantity === "auto"
+        ? "auto"
+        : typeof stored.storyboardQuantity === "number"
+          ? normalizeImageQuantity(stored.storyboardQuantity)
+          : "auto",
+    conversation: deserializeConversationSettings(stored.conversation, stored),
   };
 }
 
@@ -200,6 +266,15 @@ function persistLocalPreferences(settings: GenerationSettings): void {
     quality: settings.quality,
     quantity: normalizeImageQuantity(settings.quantity),
     rememberApiKey: settings.rememberApiKey,
+    mode: settings.mode,
+    storyboardQuantity: settings.storyboardQuantity,
+    conversation: {
+      ...settings.conversation,
+      apiKey:
+        !isDesktopRuntime() && settings.conversation.rememberApiKey
+          ? settings.conversation.apiKey
+          : undefined,
+    },
     ...(!isDesktopRuntime() && settings.rememberApiKey && settings.apiKey
       ? { apiKey: settings.apiKey }
       : {}),
@@ -208,10 +283,50 @@ function persistLocalPreferences(settings: GenerationSettings): void {
 }
 
 function normalizeSettings(settings: GenerationSettings): GenerationSettings {
+  const conversation = {
+    ...DEFAULT_CONVERSATION_SETTINGS,
+    ...(settings.conversation ?? {}),
+  };
+  if (conversation.shareImageConnection) {
+    conversation.baseUrl = settings.baseUrl;
+    conversation.apiKey = settings.apiKey;
+  }
+  conversation.rememberApiKey = settings.rememberApiKey;
   return {
     ...settings,
     model: IMAGE_MODEL,
     quantity: normalizeImageQuantity(settings.quantity),
+    mode: VALID_MODES.has(settings.mode) ? settings.mode : "direct",
+    storyboardQuantity:
+      settings.storyboardQuantity === "auto"
+        ? "auto"
+        : normalizeImageQuantity(settings.storyboardQuantity),
+    conversation,
+  };
+}
+
+function deserializeConversationSettings(
+  stored: Partial<ConversationSettings> | undefined,
+  root: Partial<StoredSettings>,
+): ConversationSettings {
+  const conversation = { ...DEFAULT_CONVERSATION_SETTINGS, ...(stored ?? {}) };
+  const share = conversation.shareImageConnection !== false;
+  return {
+    ...conversation,
+    enabled: conversation.enabled !== false,
+    baseUrl: share && typeof root.baseUrl === "string" ? root.baseUrl : String(conversation.baseUrl ?? ""),
+    apiKey: share
+      ? typeof root.apiKey === "string"
+        ? root.apiKey
+        : ""
+      : typeof conversation.apiKey === "string"
+        ? conversation.apiKey
+        : "",
+    model: typeof conversation.model === "string" && conversation.model ? conversation.model : DEFAULT_CONVERSATION_SETTINGS.model,
+    supportsVision: conversation.supportsVision === true,
+    supportsStructuredOutput: conversation.supportsStructuredOutput !== false,
+    rememberApiKey: root.rememberApiKey === true || conversation.rememberApiKey === true,
+    shareImageConnection: share,
   };
 }
 

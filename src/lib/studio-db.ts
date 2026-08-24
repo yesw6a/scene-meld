@@ -1,6 +1,6 @@
 import { openDB, type DBSchema } from "idb";
 
-import { restoreLegacyConversationTitle } from "./conversations";
+import { titleForMessages } from "./conversations";
 import { normalizeImageQuantity } from "./image-batch";
 import type {
   AssistantMessage,
@@ -217,13 +217,10 @@ function restoreConversation(conversation: StoredConversation): Conversation {
   return {
     ...conversation,
     titleMode,
-    title:
-      titleMode === "auto"
-        ? restoreLegacyConversationTitle(
-            conversation.title,
-            messages.find((message) => message.type === "user")?.prompt,
-          )
-        : conversation.title,
+    title: titleForMessages(
+      { title: conversation.title, titleMode },
+      messages,
+    ),
     messages,
     updatedAt: interrupted ? Date.now() : conversation.updatedAt,
   };

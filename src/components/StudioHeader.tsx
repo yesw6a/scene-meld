@@ -1,6 +1,6 @@
 import * as stylex from "@stylexjs/stylex";
 import { Button, Tag, Tooltip } from "antd";
-import { Menu } from "lucide-react";
+import { Cable, ChevronRight, Menu } from "lucide-react";
 
 import type { Conversation } from "../types";
 import { colors, materials, motion, radii, shadows } from "../styles/tokens.stylex";
@@ -50,21 +50,24 @@ export default function StudioHeader({
 
       <div {...stylex.props(styles.headerActions)}>
         <span {...stylex.props(styles.connectionState)}>
-          <Tooltip title={`${connection.description} ${endpointLabel}`} placement="bottom">
+          <Tooltip title={`打开连接设置。${connection.description} ${endpointLabel}`} placement="bottom">
             <button
               type="button"
               {...stylex.props(styles.connectionTrigger)}
               aria-label={`打开连接信息：${connection.label}`}
               onClick={onOpenSettings}
             >
+              <Cable size={15} aria-hidden="true" />
               <Tag color={connection.color} className={stylex.props(styles.statusTag).className}>
                 {connection.label}
               </Tag>
+              <span {...stylex.props(styles.connectionEndpoint)}>{endpointLabel}</span>
+              <ChevronRight size={15} aria-hidden="true" {...stylex.props(styles.connectionChevron)} />
             </button>
           </Tooltip>
         </span>
         <span {...stylex.props(styles.modelBadge)}>
-          {endpointLabel} · {model}
+          {model}
         </span>
       </div>
     </header>
@@ -128,6 +131,9 @@ const styles = stylex.create({
       transitionDuration: "0ms",
       transform: "none",
     },
+    "@media (max-width: 760px)": {
+      minHeight: "44px",
+    },
   },
   headerTitle: {
     minWidth: 0,
@@ -160,32 +166,60 @@ const styles = stylex.create({
   },
   connectionState: {
     display: "inline-flex",
-    "@media (max-width: 760px)": {
-      display: "none",
-    },
   },
   connectionTrigger: {
+    minHeight: "36px",
     display: "inline-flex",
-    padding: 0,
-    color: "inherit",
-    backgroundColor: "transparent",
-    borderWidth: 0,
-    borderRadius: radii.pill,
+    alignItems: "center",
+    gap: "6px",
+    padding: "3px 8px 3px 7px",
+    color: colors.muted,
+    backgroundColor: colors.glassSubtle,
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: colors.glassBorder,
+    borderRadius: radii.medium,
     cursor: "pointer",
+    transitionProperty: "color, background-color, border-color, transform, box-shadow",
+    transitionDuration: motion.fast,
+    transitionTimingFunction: motion.easing,
+    ":hover": {
+      color: colors.primary,
+      backgroundColor: colors.primarySoft,
+      borderColor: colors.primary,
+    },
+    ":active": { transform: "scale(0.98)" },
     ":focus-visible": {
       boxShadow: shadows.focus,
     },
+    "@media (prefers-reduced-motion: reduce)": {
+      transitionDuration: "0ms",
+      transform: "none",
+    },
   },
   statusTag: {
-    minHeight: "28px",
+    minHeight: "24px",
     display: "inline-flex",
     alignItems: "center",
-    paddingInline: "10px",
+    paddingInline: "8px",
     marginInlineEnd: 0,
     borderColor: colors.glassBorder,
     borderRadius: radii.pill,
     WebkitBackdropFilter: materials.subtle,
     backdropFilter: materials.subtle,
+  },
+  connectionEndpoint: {
+    maxWidth: "150px",
+    overflow: "hidden",
+    fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace",
+    fontSize: "12px",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    "@media (max-width: 760px)": { display: "none" },
+  },
+  connectionChevron: {
+    flexShrink: 0,
+    color: colors.subtle,
   },
   modelBadge: {
     maxWidth: "220px",

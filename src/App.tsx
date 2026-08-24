@@ -4,6 +4,7 @@ import { App as AntdApp, Drawer, Spin } from "antd";
 
 import AppOverlays, { type SettingsPanel } from "./components/AppOverlays";
 import Composer from "./components/Composer";
+import PromptOptimizationDialog from "./components/PromptOptimizationDialog";
 import WindowChrome from "./components/WindowChrome";
 import MessageFeed from "./components/MessageFeed";
 import Sidebar from "./components/Sidebar";
@@ -13,19 +14,14 @@ import useConversationDeletion from "./hooks/useConversationDeletion";
 import useConversationRenaming from "./hooks/useConversationRenaming";
 import useImageDrafts from "./hooks/useImageDrafts";
 import useDesktopUpdater from "./hooks/useDesktopUpdater";
-import { requestEditedImage, requestGeneratedImage } from "./lib/api";
+import usePromptSubmission from "./hooks/usePromptSubmission";
 import {
   createConversation,
-  createId,
   titleForMessages,
-  titleForSubmittedPrompt,
 } from "./lib/conversations";
-import {
-  prepareImageAttachments,
-  resolveMessageImageAttachments,
-} from "./lib/image-attachments";
-import { normalizeImageQuantity } from "./lib/image-batch";
-import { runImageGenerationBatch } from "./lib/image-batch-generation";
+import { resolveMessageImageAttachments } from "./lib/image-attachments";
+import { applyPromptSettings, parsePromptDirectives } from "./lib/prompt-directives";
+import { optimizePrompt } from "./lib/prompt-optimizer";
 import { endpointHostLabel } from "./lib/image-endpoint";
 import {
   copyImageFromUrl,
@@ -53,12 +49,10 @@ import {
   missingAttachmentMessage,
 } from "./lib/studio-presenters";
 import {
-  base64ToBlob,
   clearWorkspaceData,
   dataUrlToBlob,
   loadGeneratedImage,
   loadWorkspace,
-  saveGeneratedImage,
   saveWorkspace,
 } from "./lib/studio-db";
 import { appStyles as styles } from "./styles/app.stylex";
@@ -66,10 +60,8 @@ import type {
   AssistantMessage,
   ConnectionStatus,
   Conversation,
-  GenerationRequestSettings,
   GenerationSettings,
-  GenerationSnapshot,
-  ImageAttachmentSource,
+  PromptOptimizationResult,
   UserMessage,
   WorkspaceSnapshot,
 } from "./types";
@@ -90,10 +82,15 @@ export default function StudioApp() {
     loadNavigationCollapsed(),
   );
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isOptimizingPrompt, setIsOptimizingPrompt] = useState(false);
+  const [optimizationResult, setOptimizationResult] = useState<PromptOptimizationResult | null>(null);
+  const [optimizationSourcePrompt, setOptimizationSourcePrompt] = useState("");
+  const [optimizationOpen, setOptimizationOpen] = useState(false);
   const [historyClearing, setHistoryClearing] = useState(false);
   const [lastConnectionStatus, setLastConnectionStatus] =
     useState<SettledConnectionStatus>("ready");
   const abortRef = useRef<AbortController | null>(null);
+  const optimizationAbortRef = useRef<AbortController | null>(null);
   const initializationStarted = useRef(false);
   const settingsHydrationStarted = useRef(false);
   const storageWarningShown = useRef(false);
@@ -216,263 +213,80 @@ export default function StudioApp() {
     [updateConversation],
   );
 
-  const submitPrompt = useCallback(
-    async (
-      rawPrompt: string,
-      snapshotOverride?: GenerationSnapshot,
-      conversationIdOverride?: string,
-      attachmentSourcesOverride?: ImageAttachmentSource[],
-    ) => {
-      const prompt = rawPrompt.trim();
-      const targetConversation = conversationIdOverride
-        ? workspace?.conversations.find(
-            (conversation) => conversation.id === conversationIdOverride,
-          )
-        : activeConversation;
+  const submitPrompt = usePromptSubmission({
+    workspace,
+    activeConversation,
+    settings,
+    configured,
+    isGenerating,
+    requestRef: abortRef,
+    draftImageSources,
+    storageAvailable,
+    toast,
+    setSettings,
+    setIsGenerating,
+    setStorageAvailable,
+    setLastConnectionStatus,
+    setDraft,
+    clearDraftImages,
+    openConnectionSettings,
+    updateConversation,
+    updateAssistantMessage,
+  });
 
-      if (
-        !prompt ||
-        isGenerating ||
-        abortRef.current ||
-        !targetConversation
-      ) {
-        return;
-      }
-
-      if (prompt.length > 20_000) {
-        toast.error("提示词不能超过 20,000 个字符。");
-        return;
-      }
-
-      if (!configured) {
-        openConnectionSettings();
-        toast.warning("请先填写 API 基础地址与 API Key。");
-        return;
-      }
-
-      const conversationId = targetConversation.id;
-      const userId = createId("user");
-      const assistantId = createId("assistant");
-      const now = Date.now();
-      const attachmentSources = attachmentSourcesOverride ?? draftImageSources;
-      const quantity = normalizeImageQuantity(
-        snapshotOverride?.quantity ?? settings.quantity,
+  const handleOptimizePrompt = useCallback(async (rawPrompt: string) => {
+    if (isGenerating || isOptimizingPrompt || optimizationAbortRef.current) return;
+    const originalPrompt = rawPrompt.trim();
+    const directiveResult = parsePromptDirectives(originalPrompt);
+    if (directiveResult.errors.length) {
+      toast.error(directiveResult.errors[0]);
+      return;
+    }
+    const effectiveSettings = applyPromptSettings(settings, directiveResult.settingsPatch);
+    if (directiveResult.directives.length) {
+      setSettings(effectiveSettings);
+      saveSettingsPreferences(effectiveSettings);
+      toast.info(`已同步提示词规格：${directiveResult.directives.map((item) => item.label).join(" · ")}`);
+    }
+    const controller = new AbortController();
+    optimizationAbortRef.current = controller;
+    setIsOptimizingPrompt(true);
+    try {
+      const result = await optimizePrompt(
+        effectiveSettings.conversation,
+        directiveResult.cleanPrompt,
+        controller.signal,
       );
-      const requestSnapshot: GenerationSnapshot = {
-        model: IMAGE_MODEL,
-        size: snapshotOverride?.size ?? settings.size,
-        quality: snapshotOverride?.quality ?? settings.quality,
-        quantity,
-      };
-      const requestSettings: GenerationRequestSettings = {
-        ...settings,
-        ...requestSnapshot,
-      };
-
-      if (quantity > 1) {
-        const batchId = createId("batch");
-        const controller = new AbortController();
-        let storageWarningShown = false;
-        abortRef.current = controller;
-        setIsGenerating(true);
-
-        try {
-          const outcome = await runImageGenerationBatch({
-            prompt,
-            batchId,
-            quantity,
-            requestSettings,
-            requestSnapshot,
-            attachmentSources,
-            storageAvailable,
-            createdAt: now,
-            signal: controller.signal,
-            onPrepared: (assistants, prepared) => {
-              updateConversation(conversationId, (conversation) => ({
-                ...conversation,
-                title: titleForSubmittedPrompt(conversation, prompt),
-                messages: [
-                  ...conversation.messages,
-                  {
-                    id: userId,
-                    type: "user",
-                    prompt,
-                    createdAt: now,
-                    batchId,
-                    ...(prepared.messageAttachments.length > 0
-                      ? { attachments: prepared.messageAttachments }
-                      : {}),
-                  },
-                  ...assistants,
-                ],
-                updatedAt: now,
-              }));
-              if (attachmentSourcesOverride === undefined) {
-                setDraft("");
-                clearDraftImages();
-              }
-            },
-            onUpdate: (assistantId, patch) =>
-              updateAssistantMessage(conversationId, assistantId, patch),
-            onStorageWarning: (kind) => {
-              if (storageWarningShown) {
-                return;
-              }
-              storageWarningShown = true;
-              setStorageAvailable(false);
-              toast.warning(
-                kind === "input"
-                  ? "参考图仍可用于本次请求，但无法保存到本地；刷新页面后可能无法再次编辑。"
-                  : "图片已生成，但无法保存到本地。请在关闭页面前下载图片。",
-              );
-            },
-          });
-
-          if (outcome.successfulCount > 0) {
-            setLastConnectionStatus("success");
-          } else if (outcome.failedCount > 0) {
-            setLastConnectionStatus("error");
-          } else if (outcome.cancelledCount > 0) {
-            setLastConnectionStatus("ready");
-          }
-        } catch (error) {
-          if (!controller.signal.aborted) {
-            setLastConnectionStatus("error");
-            toast.error(
-              error instanceof Error
-                ? error.message
-                : "批量生成无法启动，请检查连接设置后重试。",
-            );
-          }
-        } finally {
-          if (abortRef.current === controller) {
-            abortRef.current = null;
-          }
-          setIsGenerating(false);
-        }
-        return;
+      setOptimizationSourcePrompt(originalPrompt);
+      setOptimizationResult(result);
+      setOptimizationOpen(true);
+    } catch (error) {
+      if (!controller.signal.aborted) {
+        toast.error(error instanceof Error ? error.message : "提示词优化失败，请检查 AI 规划连接。");
       }
-
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setIsGenerating(true);
-
-      const preparedAttachments = await prepareImageAttachments(
-        attachmentSources,
-        storageAvailable,
-        now,
-      );
-      if (preparedAttachments.persistenceFailed) {
-        setStorageAvailable(false);
-        toast.warning(
-          "参考图仍可用于本次请求，但无法保存到本地；刷新页面后可能无法再次编辑。",
-        );
-      }
-
-      updateConversation(conversationId, (conversation) => ({
-        ...conversation,
-        title: titleForSubmittedPrompt(conversation, prompt),
-        messages: [
-          ...conversation.messages,
-          {
-            id: userId,
-            type: "user",
-            prompt,
-            createdAt: now,
-            ...(preparedAttachments.messageAttachments.length > 0
-              ? { attachments: preparedAttachments.messageAttachments }
-              : {}),
-          },
-          {
-            id: assistantId,
-            type: "assistant",
-            prompt,
-            request: requestSnapshot,
-            status: "loading",
-            createdAt: now + 1,
-          },
-        ],
-        updatedAt: now,
-      }));
-      if (attachmentSourcesOverride === undefined) {
-        setDraft("");
-        clearDraftImages();
-      }
-
-      try {
-        const result = preparedAttachments.requestAttachments.length
-          ? await requestEditedImage(
-              requestSettings,
-              prompt,
-              preparedAttachments.requestAttachments,
-              controller.signal,
-            )
-          : await requestGeneratedImage(requestSettings, prompt, controller.signal);
-        const imageDataUrl = `data:${result.mimeType};base64,${result.image}`;
-        let imageStored = false;
-
-        if (storageAvailable) {
-          try {
-            const blob = base64ToBlob(result.image, result.mimeType);
-            await saveGeneratedImage(assistantId, blob, result.mimeType, now + 1);
-            imageStored = true;
-          } catch {
-            setStorageAvailable(false);
-            toast.warning("图片已生成，但无法保存到本地。请在关闭页面前下载图片。");
-          }
-        }
-
-        updateAssistantMessage(conversationId, assistantId, {
-          status: "success",
-          ...(imageStored ? { imageId: assistantId } : { imageDataUrl }),
-          mimeType: result.mimeType,
-          revisedPrompt: result.revisedPrompt,
-          source: result.source,
-        });
-        setLastConnectionStatus("success");
-      } catch (error) {
-        const aborted = error instanceof Error && error.name === "AbortError";
-        updateAssistantMessage(conversationId, assistantId, {
-          status: aborted ? "aborted" : "error",
-          error: aborted
-            ? "请求已由你停止。"
-            : error instanceof Error
-              ? error.message
-              : "未知错误，请检查连接设置后重试。",
-        });
-        if (!aborted) {
-          setLastConnectionStatus("error");
-        }
-      } finally {
-        if (abortRef.current === controller) {
-          abortRef.current = null;
-        }
-        setIsGenerating(false);
-      }
-    },
-    [
-      activeConversation,
-      clearDraftImages,
-      configured,
-      draftImageSources,
-      isGenerating,
-      settings,
-      storageAvailable,
-      toast,
-      updateAssistantMessage,
-      updateConversation,
-      workspace,
-    ],
-  );
+    } finally {
+      if (optimizationAbortRef.current === controller) optimizationAbortRef.current = null;
+      setIsOptimizingPrompt(false);
+    }
+  }, [isGenerating, isOptimizingPrompt, settings, toast]);
 
   const handleSaveSettings = async (nextSettings: GenerationSettings) => {
     const normalizedSettings = { ...nextSettings, model: IMAGE_MODEL };
     const networkConnectionChanged =
       normalizedSettings.baseUrl !== settings.baseUrl ||
       normalizedSettings.apiKey !== settings.apiKey;
+    const conversationConnectionChanged =
+      normalizedSettings.conversation.baseUrl !== settings.conversation.baseUrl ||
+      normalizedSettings.conversation.apiKey !== settings.conversation.apiKey ||
+      normalizedSettings.conversation.model !== settings.conversation.model ||
+      normalizedSettings.conversation.supportsStructuredOutput !== settings.conversation.supportsStructuredOutput ||
+      normalizedSettings.conversation.enabled !== settings.conversation.enabled ||
+      normalizedSettings.conversation.shareImageConnection !== settings.conversation.shareImageConnection;
+    const credentialStorageChanged = normalizedSettings.rememberApiKey !== settings.rememberApiKey;
     const connectionSettingsChanged =
       networkConnectionChanged ||
-      normalizedSettings.rememberApiKey !== settings.rememberApiKey;
+      conversationConnectionChanged ||
+      credentialStorageChanged;
 
     try {
       await saveSettings(normalizedSettings);
@@ -484,13 +298,15 @@ export default function StudioApp() {
       const desktop = isDesktopRuntime();
       toast.success(
         connectionSettingsChanged
+          ? credentialStorageChanged
             ? normalizedSettings.rememberApiKey
               ? desktop
-                ? "连接设置已保存，应用已请求系统凭据管理器保存 API Key；具体保护能力取决于系统和账户配置。"
-                : "连接设置已保存，API Key 将保留在此浏览器中。"
-            : desktop
-              ? "连接设置已保存，API Key 仅保留到本次应用会话结束。"
-              : "连接设置已保存，API Key 仅保留到页面刷新前。"
+                ? "连接设置已保存，应用已请求系统凭据管理器保存已配置的连接凭据。"
+                : "连接设置已保存，已配置的连接凭据将保留在此浏览器中。"
+              : desktop
+                ? "连接设置已保存，连接凭据仅保留到本次应用会话结束。"
+                : "连接设置已保存，连接凭据仅保留到页面刷新前。"
+            : "连接设置已保存。"
           : "工作区设置已保存。",
       );
     } catch {
@@ -866,10 +682,12 @@ export default function StudioApp() {
           attachments={draftImages}
           settings={settings}
           loading={isGenerating}
+          optimizing={isOptimizingPrompt}
           onChange={setDraft}
           onAddFiles={handleAddDraftImages}
           onRemoveFile={removeDraftImage}
           onSubmit={(value) => void submitPrompt(value)}
+          onOptimize={(value) => void handleOptimizePrompt(value)}
           onCancel={() => abortRef.current?.abort()}
           onQuickSettingChange={handleQuickSettingChange}
         />
@@ -890,6 +708,17 @@ export default function StudioApp() {
         onClearHistory={handleClearHistory}
         onCheckForUpdates={desktopUpdater.checkForUpdates}
         onInstallUpdate={desktopUpdater.installUpdate}
+      />
+
+      <PromptOptimizationDialog
+        open={optimizationOpen}
+        originalPrompt={optimizationSourcePrompt}
+        result={optimizationResult}
+        onClose={() => setOptimizationOpen(false)}
+        onApply={(value) => {
+          setDraft(value);
+          setOptimizationOpen(false);
+        }}
       />
 
       <Drawer

@@ -45,7 +45,9 @@ export default function BatchImageGrid({
     <div {...stylex.props(styles.root)} aria-label="批量生成结果">
       <div {...stylex.props(styles.header)}>
         <div {...stylex.props(styles.headerCopy)}>
-          <span {...stylex.props(styles.title)}>批量结果</span>
+          <span {...stylex.props(styles.title)}>
+            {messages.some((message) => message.shotId) ? "分镜结果" : "批量结果"}
+          </span>
           {request ? (
             <span {...stylex.props(styles.meta)}>
               <span>{request.model}</span>

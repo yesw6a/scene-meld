@@ -42,6 +42,12 @@ export default function BatchImageTile({
       {...stylex.props(styles.root)}
       aria-label={`批量结果，第 ${index + 1} 张，共 ${total} 张，${state.label}`}
     >
+      {message.shotTitle ? (
+        <div {...stylex.props(styles.shotLabel)}>
+          <span>{`镜头 ${(message.shotIndex ?? index) + 1}`}</span>
+          <strong>{message.shotTitle}</strong>
+        </div>
+      ) : null}
       {message.status === "success" ? (
         <ImageResultCard
           message={message}
@@ -225,5 +231,14 @@ const styles = stylex.create({
     display: "flex",
     alignItems: "center",
     justifyContent: "flex-start",
+  },
+  shotLabel: {
+    minWidth: 0,
+    display: "flex",
+    alignItems: "baseline",
+    gap: "6px",
+    color: colors.muted,
+    fontSize: "12px",
+    overflowWrap: "anywhere",
   },
 });

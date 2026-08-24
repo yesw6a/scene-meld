@@ -32,6 +32,64 @@ pub struct ImageResponse {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ConversationRequest {
+    pub request_id: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    pub source_prompt: String,
+    pub shot_count: usize,
+    pub supports_structured_output: bool,
+    #[serde(default)]
+    pub vision_images: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationResponse {
+    pub content: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptOptimizationRequest {
+    pub request_id: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub rewrite_mode: Option<String>,
+    #[serde(default)]
+    pub safety_findings: Vec<String>,
+    pub supports_structured_output: bool,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptOptimizationResponse {
+    pub optimized_prompt: String,
+    pub risk_level: String,
+    pub changes: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub notice: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelListRequest {
+    pub base_url: String,
+    pub api_key: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelListResponse {
+    pub models: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct SaveImageRequest {
     pub file_name: String,
     pub mime_type: String,
