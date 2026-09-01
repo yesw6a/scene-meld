@@ -103,6 +103,7 @@ async function requestGeneratedImageInBrowser(
         prompt,
         size: settings.size,
         quality: settings.quality,
+        output_format: "png",
       }),
     },
     signal,
@@ -123,6 +124,7 @@ async function requestEditedImageInBrowser(
   formData.append("prompt", prompt);
   formData.append("size", settings.size);
   formData.append("quality", settings.quality);
+  formData.append("output_format", "png");
 
   for (const attachment of attachments) {
     formData.append("image[]", attachment.blob, attachment.name);

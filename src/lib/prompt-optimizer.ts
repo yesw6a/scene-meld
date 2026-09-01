@@ -21,8 +21,8 @@ export async function optimizePrompt(
   prompt: string,
   signal: AbortSignal,
 ): Promise<PromptOptimizationResult> {
-  if (!settings.enabled || !settings.baseUrl || !settings.apiKey || !settings.model) {
-    throw new Error("请先配置并启用 AI 规划连接，再使用提示词优化。");
+  if (!settings.baseUrl || !settings.apiKey || !settings.model) {
+    throw new Error("AI 辅助连接尚未配置完整，无法优化提示词。");
   }
   if (!prompt.trim() || prompt.length > 20_000) {
     throw new Error("提示词为空或超过 20,000 个字符。");

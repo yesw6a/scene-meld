@@ -13,7 +13,7 @@ export async function planStoryboard(
   signal: AbortSignal,
 ): Promise<StoryboardPlan> {
   const requestedCount = shotCount === "auto" ? 6 : shotCount;
-  if (!settings.enabled || !settings.baseUrl || !settings.apiKey) {
+  if (!settings.planningScopes.storyboard || !settings.baseUrl || !settings.apiKey) {
     return createFallbackStoryboard(sourcePrompt, requestedCount);
   }
 

@@ -77,6 +77,127 @@ button,
   touch-action: manipulation;
 }
 
+[data-composer-container] {
+  container: composer / inline-size;
+}
+
+.studio-generation-select .ant-select-selector {
+  min-height: 44px !important;
+}
+
+.studio-generation-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.studio-generation-select .ant-select-selector {
+  min-width: 0;
+  padding-inline: clamp(7px, 1.2cqi, 11px) !important;
+}
+
+.studio-generation-select .ant-select-selection-item {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.studio-generation-select-value {
+  min-width: 0;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.studio-generation-select-key {
+  flex-shrink: 0;
+  color: var(--app-ink);
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.68;
+}
+
+.studio-generation-select-separator {
+  flex-shrink: 0;
+  color: var(--app-ink);
+  opacity: 0.4;
+}
+
+.studio-generation-select-current {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--app-ink);
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+[data-generation-summary-main],
+[data-generation-override-summary] {
+  min-width: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+}
+
+[data-generation-summary-main] {
+  -webkit-line-clamp: 1;
+}
+
+[data-generation-override-summary] {
+  -webkit-line-clamp: 1;
+}
+
+@container composer (max-width: 760px) {
+  [data-generation-toolbar] {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  [data-generation-summary-main] {
+    -webkit-line-clamp: 2;
+  }
+}
+
+@container composer (max-width: 480px) {
+  .studio-generation-select-value {
+    height: 34px;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .studio-generation-select-key {
+    font-size: 10px;
+    line-height: 1.05;
+  }
+
+  .studio-generation-select-separator {
+    display: none;
+  }
+
+  .studio-generation-select-current {
+    width: 100%;
+    font-size: 12px;
+    line-height: 1.15;
+  }
+}
+
+.studio-composer-send,
+.ant-sender-actions-btn {
+  min-width: 44px !important;
+  width: 44px;
+  height: 44px !important;
+}
+
+.studio-dialog-action,
+.studio-storyboard-input {
+  min-height: 44px;
+}
+
 .skip-link {
   position: fixed;
   z-index: var(--app-layer-accessibility);
@@ -236,6 +357,7 @@ button,
   white-space: normal;
 }
 
+.studio-mode-select-popup .studio-select-option,
 .studio-quality-select-popup .studio-select-option {
   min-height: 36px;
   padding-inline: 10px;
@@ -275,6 +397,7 @@ button,
 }
 
 @media (pointer: coarse) {
+  .studio-mode-select-popup .studio-select-option,
   .studio-quality-select-popup .studio-select-option {
     min-height: 44px;
   }

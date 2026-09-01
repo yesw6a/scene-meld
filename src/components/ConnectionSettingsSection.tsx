@@ -1,20 +1,25 @@
 import type { ReactNode } from "react";
 import * as stylex from "@stylexjs/stylex";
-import { Alert, AutoComplete, Button, Form, Input, Radio, Switch, Typography } from "antd";
+import { AutoComplete, Button, Form, Input, Radio, Switch, Typography } from "antd";
 import {
   CheckCircle2,
   Image as ImageIcon,
   Link2,
   MessageCircle,
-  Sparkles,
   ShieldAlert,
   RefreshCw,
   ArrowRight,
   Server,
 } from "lucide-react";
 
-import { DEFAULT_CONVERSATION_MODEL, type ConversationSettings, type GenerationSettings } from "../types";
+import {
+  DEFAULT_CONVERSATION_MODEL,
+  type ConversationPlanningScopes,
+  type ConversationSettings,
+  type GenerationSettings,
+} from "../types";
 import { colors, motion, radii, shadows } from "../styles/tokens.stylex";
+import ConversationPlanningScopeSelector from "./ConversationPlanningScopeSelector";
 
 type ConnectionMode = "shared" | "separate";
 
@@ -34,6 +39,7 @@ interface ConnectionSettingsSectionProps {
     value: ConversationSettings[Key],
   ) => void;
   onConnectionModeChange: (shared: boolean) => void;
+  hasUnsavedChanges?: boolean;
   modelOptions?: string[];
   modelLoading?: boolean;
   modelError?: string;
@@ -50,6 +56,7 @@ export default function ConnectionSettingsSection({
   onUpdate,
   onUpdateConversation,
   onConnectionModeChange,
+  hasUnsavedChanges = false,
   modelOptions = [],
   modelLoading = false,
   modelError,
@@ -60,66 +67,35 @@ export default function ConnectionSettingsSection({
   const conversationReady = shared
     ? imageReady
     : Boolean(draft.conversation.baseUrl && draft.conversation.apiKey);
+  const planningLabel = enabledConversationPlanningLabel(draft.conversation.planningScopes);
   const mode: ConnectionMode = shared ? "shared" : "separate";
 
   return (
     <section {...stylex.props(styles.section)} data-connection-settings="true" aria-labelledby="connection-heading">
       <div {...stylex.props(styles.sectionHeading)}>
         <Typography.Title id="connection-heading" level={5}>
-          规划引擎
+          AI 规划范围与连接
         </Typography.Title>
         <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-          先选择分镜规划方式；启用 AI 规划后，再选择连接方式并完成对应凭据配置。
+          选择自动规划适用的生成模式，并配置规划与提示词优化共用的 AI 连接。
         </Typography.Paragraph>
       </div>
 
+      <ConversationPlanningScopeSelector
+        scopes={draft.conversation.planningScopes}
+        hasUnsavedChanges={hasUnsavedChanges}
+        onChange={(scope, checked) => onUpdateConversation("planningScopes", {
+          ...draft.conversation.planningScopes,
+          [scope]: checked,
+        })}
+      />
+
       <CredentialStorageNotice draft={draft} desktop={desktop} onUpdate={onUpdate} />
 
-      <fieldset {...stylex.props(styles.modeFieldset)}>
-        <legend {...stylex.props(styles.modeLegend)}>分镜规划方式</legend>
-        <Radio.Group
-          value={draft.conversation.enabled ? "ai" : "builtin"}
-          onChange={(event) => onUpdateConversation("enabled", event.target.value === "ai")}
-          {...stylex.props(styles.planningOptions)}
-        >
-          <Radio value="builtin" {...stylex.props(styles.planningOption, !draft.conversation.enabled && styles.planningOptionActive)}>
-            <span {...stylex.props(styles.planningOptionIcon, !draft.conversation.enabled && styles.planningOptionIconActive)}>
-              <ImageIcon size={17} aria-hidden="true" />
-            </span>
-            <span {...stylex.props(styles.modeOptionCopy)}>
-              <strong>内置规划</strong>
-              <small>不调用对话模型，使用应用内置分镜模板。</small>
-            </span>
-            {!draft.conversation.enabled ? <CheckCircle2 size={17} aria-hidden="true" {...stylex.props(styles.planningOptionMark)} /> : null}
-          </Radio>
-          <Radio value="ai" {...stylex.props(styles.planningOption, draft.conversation.enabled && styles.planningOptionActive)}>
-            <span {...stylex.props(styles.planningOptionIcon, draft.conversation.enabled && styles.planningOptionIconActive)}>
-              <Sparkles size={17} aria-hidden="true" />
-            </span>
-            <span {...stylex.props(styles.modeOptionCopy)}>
-              <strong>AI 规划</strong>
-              <small>让对话模型理解内容并生成连续分镜。</small>
-            </span>
-            {draft.conversation.enabled ? <CheckCircle2 size={17} aria-hidden="true" {...stylex.props(styles.planningOptionMark)} /> : null}
-          </Radio>
-        </Radio.Group>
-      </fieldset>
+      <TopologySelector shared={shared} onChange={onConnectionModeChange} />
 
-      {draft.conversation.enabled ? (
-        <TopologySelector shared={shared} onChange={onConnectionModeChange} />
-      ) : null}
-
-      <div key={`${draft.conversation.enabled ? "ai" : "builtin"}-${mode}`} {...stylex.props(styles.modePanel, draft.conversation.enabled && !shared && styles.modePanelWide)}>
-        {!draft.conversation.enabled ? (
-          <ImageOnlyConnectionPanel
-            draft={draft}
-            desktop={desktop}
-            endpointError={endpointError}
-            requestEndpoint={requestEndpoint}
-            requestHost={requestHost}
-            onUpdate={onUpdate}
-          />
-        ) : shared ? (
+      <div key={mode} {...stylex.props(styles.modePanel, !shared && styles.modePanelWide)}>
+        {shared ? (
           <SharedConnectionPanel
             draft={draft}
             desktop={desktop}
@@ -128,6 +104,8 @@ export default function ConnectionSettingsSection({
             requestHost={requestHost}
             onUpdate={onUpdate}
             onUpdateConversation={onUpdateConversation}
+            planningLabel={planningLabel}
+            hasUnsavedChanges={hasUnsavedChanges}
             modelOptions={modelOptions}
             modelLoading={modelLoading}
             modelError={modelError}
@@ -141,8 +119,9 @@ export default function ConnectionSettingsSection({
                 icon={<ImageIcon size={16} aria-hidden="true" />}
                 title="图片生成连接"
                 detail="固定模型：gpt-image-2"
-                status={imageReady ? "已配置" : "待配置"}
+                status={hasUnsavedChanges ? "未保存" : imageReady ? "已配置" : "待配置"}
                 ready={imageReady}
+                dirty={hasUnsavedChanges}
               />
               <ImageConnectionFields
                 draft={draft}
@@ -157,10 +136,11 @@ export default function ConnectionSettingsSection({
               <PanelHeading
                 id="conversation-channel-heading"
                 icon={<MessageCircle size={16} aria-hidden="true" />}
-                title="AI 规划连接"
-                detail="用于分镜规划"
-                status={conversationReady ? "已配置" : "待配置"}
+                title="AI 辅助连接"
+                detail={`自动规划：${planningLabel}；另供手动提示词优化`}
+                status={hasUnsavedChanges ? "未保存" : conversationReady ? "已配置" : "待配置"}
                 ready={conversationReady}
+                dirty={hasUnsavedChanges}
               />
               <ConversationConnectionFields
                 draft={draft}
@@ -187,6 +167,8 @@ function SharedConnectionPanel({
   requestHost,
   onUpdate,
   onUpdateConversation,
+  planningLabel,
+  hasUnsavedChanges,
   modelOptions,
   modelLoading,
   modelError,
@@ -199,6 +181,8 @@ function SharedConnectionPanel({
   requestHost: string;
   onUpdate: ConnectionSettingsSectionProps["onUpdate"];
   onUpdateConversation: ConnectionSettingsSectionProps["onUpdateConversation"];
+  planningLabel: string;
+  hasUnsavedChanges: boolean;
   modelOptions?: string[];
   modelLoading?: boolean;
   modelError?: string;
@@ -212,9 +196,10 @@ function SharedConnectionPanel({
         id="shared-channel-heading"
         icon={<Link2 size={16} aria-hidden="true" />}
         title="共用图片连接"
-        detail="图片生成与 AI 规划复用同一组凭据"
-        status={imageReady ? "已配置" : "待配置"}
+        detail="图片生成与已授权的 AI 辅助场景复用同一组凭据"
+        status={hasUnsavedChanges ? "未保存" : imageReady ? "已配置" : "待配置"}
         ready={imageReady}
+        dirty={hasUnsavedChanges}
       />
       <ImageConnectionFields
         draft={draft}
@@ -228,8 +213,8 @@ function SharedConnectionPanel({
       <div {...stylex.props(styles.subsectionHeading)}>
         <MessageCircle size={16} aria-hidden="true" />
         <span {...stylex.props(styles.subsectionHeadingText)}>
-          <strong>AI 规划模型</strong>
-          <small>复用上方接入，用于理解内容并生成连续分镜。</small>
+          <strong>AI 辅助模型</strong>
+          <small>自动规划：{planningLabel}；同时用于用户主动触发的提示词优化。</small>
         </span>
       </div>
       <div {...stylex.props(styles.fieldStack)}>
@@ -247,6 +232,7 @@ function PanelHeading({
   status,
   ready,
   muted,
+  dirty,
 }: {
   id: string;
   icon: ReactNode;
@@ -255,19 +241,20 @@ function PanelHeading({
   status: string;
   ready: boolean;
   muted?: boolean;
+  dirty?: boolean;
 }) {
   return (
     <div {...stylex.props(styles.panelHeading)}>
       <div {...stylex.props(styles.panelTitleGroup)}>
-        <span {...stylex.props(styles.panelIcon, muted ? styles.panelIconMuted : ready ? styles.panelIconReady : styles.panelIconPending)}>
-          {ready && !muted ? <CheckCircle2 size={16} aria-hidden="true" /> : icon}
+        <span {...stylex.props(styles.panelIcon, muted ? styles.panelIconMuted : dirty ? styles.panelIconDirty : ready ? styles.panelIconReady : styles.panelIconPending)}>
+          {ready && !muted && !dirty ? <CheckCircle2 size={16} aria-hidden="true" /> : icon}
         </span>
         <span {...stylex.props(styles.panelHeadingCopy)}>
           <strong id={id}>{title}</strong>
           <small>{detail}</small>
         </span>
       </div>
-      <span {...stylex.props(styles.panelStatus, muted ? styles.panelStatusMuted : ready ? styles.panelStatusReady : styles.panelStatusPending)}>
+      <span {...stylex.props(styles.panelStatus, muted ? styles.panelStatusMuted : dirty ? styles.panelStatusDirty : ready ? styles.panelStatusReady : styles.panelStatusPending)}>
         {status}
       </span>
     </div>
@@ -326,43 +313,6 @@ function ImageConnectionFields({
   );
 }
 
-function ImageOnlyConnectionPanel({
-  draft,
-  desktop,
-  endpointError,
-  requestEndpoint,
-  requestHost,
-  onUpdate,
-}: {
-  draft: GenerationSettings;
-  desktop: boolean;
-  endpointError?: string;
-  requestEndpoint: string | null;
-  requestHost: string;
-  onUpdate: ConnectionSettingsSectionProps["onUpdate"];
-}) {
-  return (
-    <section {...stylex.props(styles.channelPanel)} aria-labelledby="image-only-heading">
-      <PanelHeading
-        id="image-only-heading"
-        icon={<ImageIcon size={16} aria-hidden="true" />}
-        title="图片生成连接"
-        detail="当前使用内置分镜规划，固定模型：gpt-image-2"
-        status={draft.baseUrl && draft.apiKey ? "已配置" : "待配置"}
-        ready={Boolean(draft.baseUrl && draft.apiKey)}
-      />
-      <ImageConnectionFields
-        draft={draft}
-        desktop={desktop}
-        endpointError={endpointError}
-        requestEndpoint={requestEndpoint}
-        requestHost={requestHost}
-        onUpdate={onUpdate}
-      />
-    </section>
-  );
-}
-
 function TopologySelector({
   shared,
   onChange,
@@ -372,7 +322,7 @@ function TopologySelector({
 }) {
   return (
     <fieldset {...stylex.props(styles.topologyFieldset)}>
-      <legend {...stylex.props(styles.modeLegend)}>AI 规划连接</legend>
+      <legend {...stylex.props(styles.modeLegend)}>AI 辅助连接</legend>
       <Radio.Group
         value={shared ? "unified" : "independent"}
         onChange={(event) => onChange(event.target.value === "unified")}
@@ -382,7 +332,7 @@ function TopologySelector({
           <TopologyDiagram shared active={shared} />
           <span {...stylex.props(styles.topologyCopy)}>
             <strong>共用图片连接</strong>
-            <small>AI 规划直接使用上面的图片连接配置。</small>
+            <small>AI 自动规划和手动提示词优化使用图片连接配置。</small>
           </span>
           {shared ? <CheckCircle2 size={17} aria-hidden="true" {...stylex.props(styles.topologyOptionMark)} /> : null}
         </Radio>
@@ -390,7 +340,7 @@ function TopologySelector({
           <TopologyDiagram shared={false} active={!shared} />
           <span {...stylex.props(styles.topologyCopy)}>
             <strong>单独配置 AI 连接</strong>
-            <small>为 AI 规划填写独立的 Endpoint 和 API Key。</small>
+            <small>为 AI 自动规划和手动提示词优化填写独立凭据。</small>
           </span>
           {!shared ? <CheckCircle2 size={17} aria-hidden="true" {...stylex.props(styles.topologyOptionMark)} /> : null}
         </Radio>
@@ -441,11 +391,9 @@ function CredentialStorageNotice({
   desktop: boolean;
   onUpdate: ConnectionSettingsSectionProps["onUpdate"];
 }) {
-  const copy = !draft.conversation.enabled
-    ? "当前保存图片生成凭据。"
-    : draft.conversation.shareImageConnection
-      ? "当前保存图片生成与 AI 规划共用的凭据。"
-      : "当前保存图片生成与 AI 规划各自的凭据。";
+  const copy = draft.conversation.shareImageConnection
+    ? "当前保存图片生成与 AI 辅助共用的凭据。"
+    : "当前保存图片生成与 AI 辅助各自的凭据。";
   return (
     <section {...stylex.props(styles.securityPanel)} aria-labelledby="credential-storage-heading">
       <div {...stylex.props(styles.securityHeading)}>
@@ -457,7 +405,7 @@ function CredentialStorageNotice({
         <Switch checked={draft.rememberApiKey} onChange={(checked) => onUpdate("rememberApiKey", checked)} />
       </div>
       <small {...stylex.props(styles.securityDetail)}>
-        {desktop ? "桌面端使用系统凭据管理器；AI 规划关闭时，未启用的对话凭据不会写入其中。" : "Web 端将保存在当前浏览器，同源脚本和扩展可能读取 localStorage。"}
+        {desktop ? "桌面端使用系统凭据管理器；是否自动规划不会改变凭据保存规则。" : "Web 端将保存在当前浏览器，同源脚本和扩展可能读取 localStorage。"}
       </small>
     </section>
   );
@@ -480,12 +428,13 @@ function ConversationConnectionFields({
   modelError?: string;
   onDiscoverModels?: () => void;
 }) {
+  const planningEnabled = hasEnabledConversationPlanning(draft.conversation);
   return (
     <div {...stylex.props(styles.fieldStack)}>
       <div {...stylex.props(styles.independentFields)}>
         <Form.Item
-          label="AI 规划 Endpoint"
-          required={draft.conversation.enabled}
+          label="AI 辅助 Endpoint"
+          required={planningEnabled}
           validateStatus={endpointError ? "error" : undefined}
           help={endpointError}
         >
@@ -495,11 +444,11 @@ function ConversationConnectionFields({
             onChange={(event) => onUpdate("baseUrl", event.target.value)}
           />
         </Form.Item>
-        <Form.Item label="AI 规划 API Key" required={draft.conversation.enabled}>
+        <Form.Item label="AI 辅助 API Key" required={planningEnabled}>
           <Input.Password
             value={draft.conversation.apiKey}
             autoComplete="off"
-            placeholder="输入对话 AI API Key"
+            placeholder="输入 AI 辅助模型 API Key"
             onChange={(event) => onUpdate("apiKey", event.target.value)}
           />
         </Form.Item>
@@ -528,7 +477,7 @@ function ConversationCapabilityFields({
   return (
     <div {...stylex.props(styles.revealedFields)}>
       <Form.Item
-        label="对话模型"
+        label="AI 辅助模型"
         help={modelError || (modelOptions.length ? `已从当前服务获取 ${modelOptions.length} 个模型。` : "模型名称由上游服务决定，也可以手动填写。")}
         validateStatus={modelError ? "error" : undefined}
       >
@@ -573,6 +522,20 @@ function ConversationCapabilityFields({
   );
 }
 
+function hasEnabledConversationPlanning(conversation: ConversationSettings): boolean {
+  const scopes = conversation.planningScopes;
+  return scopes.single || scopes.batch || scopes.storyboard;
+}
+
+function enabledConversationPlanningLabel(scopes: ConversationPlanningScopes): string {
+  const labels = [
+    scopes.single ? "单图" : "",
+    scopes.batch ? "多图" : "",
+    scopes.storyboard ? "分镜" : "",
+  ].filter(Boolean);
+  return labels.join("、") || "已关闭";
+}
+
 const modePanelEnter = stylex.keyframes({
   from: { opacity: 0, transform: "translateY(6px)" },
   to: { opacity: 1, transform: "translateY(0)" },
@@ -582,44 +545,7 @@ const styles = stylex.create({
   section: { display: "flex", flexDirection: "column", gap: "16px" },
   sectionHeading: { display: "flex", flexDirection: "column" },
   sectionCopy: { marginTop: "-4px", marginBottom: 0, lineHeight: 1.65 },
-  modeFieldset: { minWidth: 0, padding: 0, margin: 0, borderWidth: 0 },
   modeLegend: { padding: 0, marginBottom: "8px", color: colors.ink, fontSize: "13px", fontWeight: 600 },
-  planningOptions: {
-    width: "100%",
-    display: "grid",
-    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-    gap: "8px",
-    "@media (max-width: 560px)": { gridTemplateColumns: "1fr" },
-  },
-  planningOption: {
-    position: "relative",
-    width: "100%",
-    minWidth: 0,
-    minHeight: "86px",
-    display: "flex",
-    alignItems: "flex-start",
-    gap: "9px",
-    padding: "13px 42px 13px 12px",
-    boxSizing: "border-box",
-    whiteSpace: "normal",
-    color: colors.ink,
-    backgroundColor: colors.glassSubtle,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: colors.glassBorder,
-    borderRadius: radii.medium,
-    cursor: "pointer",
-    transitionProperty: "background-color, border-color, box-shadow",
-    transitionDuration: motion.fast,
-    transitionTimingFunction: motion.easing,
-    ":hover": { backgroundColor: colors.primarySoft },
-    ":focus-within": { boxShadow: shadows.focus },
-  },
-  planningOptionActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary, boxShadow: `inset 0 0 0 1px ${colors.primary}` },
-  planningOptionIcon: { width: "30px", height: "30px", display: "grid", placeItems: "center", color: colors.muted, backgroundColor: colors.glassSubtle, borderRadius: radii.small },
-  planningOptionIconActive: { color: colors.primary, backgroundColor: colors.primarySoftHover },
-  modeOptionCopy: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" },
-  planningOptionMark: { position: "absolute", top: "13px", right: "13px", color: colors.primary },
   topologyFieldset: { minWidth: 0, padding: 0, margin: 0, borderWidth: 0 },
   topologyOptions: { width: "100%", display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: "8px", "@media (max-width: 560px)": { gridTemplateColumns: "1fr" } },
   topologyOption: { position: "relative", width: "100%", minWidth: 0, minHeight: "96px", display: "flex", alignItems: "flex-start", gap: "12px", padding: "14px 42px 14px 14px", boxSizing: "border-box", whiteSpace: "normal", color: colors.ink, backgroundColor: colors.glassSubtle, borderWidth: "1px", borderStyle: "solid", borderColor: colors.glassBorder, borderRadius: radii.medium, cursor: "pointer", transitionProperty: "background-color, border-color, box-shadow, transform", transitionDuration: motion.fast, transitionTimingFunction: motion.easing, ":hover": { backgroundColor: colors.primarySoft }, ":focus-within": { boxShadow: shadows.focus }, ":active": { transform: "scale(0.99)" }, "@media (prefers-reduced-motion: reduce)": { transitionDuration: "0ms", transform: "none" } },
@@ -669,11 +595,13 @@ const styles = stylex.create({
   panelTitleGroup: { minWidth: 0, display: "flex", alignItems: "flex-start", gap: "9px" },
   panelIcon: { width: "28px", height: "28px", flexShrink: 0, display: "grid", placeItems: "center", borderRadius: radii.small },
   panelIconReady: { color: colors.success, backgroundColor: colors.successSoft },
+  panelIconDirty: { color: colors.warning, backgroundColor: colors.warningSoft },
   panelIconPending: { color: colors.muted, backgroundColor: colors.glassSubtle },
   panelIconMuted: { color: colors.subtle, backgroundColor: colors.glassSubtle },
   panelHeadingCopy: { minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" },
   panelStatus: { flexShrink: 0, paddingTop: "4px", fontSize: "12px", whiteSpace: "nowrap" },
   panelStatusReady: { color: colors.success },
+  panelStatusDirty: { color: colors.warning },
   panelStatusPending: { color: colors.warning },
   panelStatusMuted: { color: colors.subtle },
   fieldStack: { minWidth: 0, display: "flex", flexDirection: "column", gap: "12px" },

@@ -7,12 +7,10 @@ import {
   Drawer,
   Form,
   App as AntdApp,
-  Select,
   Tag,
   Typography,
 } from "antd";
 import {
-  Check,
   Database,
   KeyRound,
   RotateCcw,
@@ -22,11 +20,6 @@ import {
 } from "lucide-react";
 
 import {
-  IMAGE_SIZE_OPTIONS,
-  imageSizeLabel,
-  type ImageSizeOption,
-} from "../lib/image-sizes";
-import {
   buildImageApiEndpoint,
   endpointHostLabel,
   normalizeImageApiBaseUrl,
@@ -34,7 +27,7 @@ import {
 import { isDesktopRuntime } from "../lib/runtime";
 import { listConversationModels } from "../lib/conversation-models";
 import ConnectionSettingsSection from "./ConnectionSettingsSection";
-import { DEFAULT_CONVERSATION_MODEL, IMAGE_MODEL, type ConversationSettings, type GenerationSettings, type ImageQuality, type ImageSize } from "../types";
+import { DEFAULT_CONVERSATION_MODEL, IMAGE_MODEL, type ConversationSettings, type GenerationSettings } from "../types";
 import { colors, motion, radii } from "../styles/tokens.stylex";
 
 type ConversationCredentialDraft = Pick<
@@ -83,6 +76,7 @@ export default function SettingsDrawer({
   const dataOnly = section === "data";
   const requestEndpoint = previewGenerationEndpoint(draft.baseUrl);
   const requestHost = endpointHostLabel(draft.baseUrl, "");
+  const hasUnsavedChanges = !dataOnly && JSON.stringify(draft) !== JSON.stringify(settings);
 
   useEffect(() => {
     if (open) {
@@ -109,7 +103,9 @@ export default function SettingsDrawer({
     draft.apiKey,
     draft.conversation.baseUrl,
     draft.conversation.apiKey,
-    draft.conversation.enabled,
+    draft.conversation.planningScopes.single,
+    draft.conversation.planningScopes.batch,
+    draft.conversation.planningScopes.storyboard,
     draft.conversation.shareImageConnection,
     open,
   ]);
@@ -226,7 +222,13 @@ export default function SettingsDrawer({
     }
 
     let conversationBaseUrl = draft.conversation.baseUrl.trim();
-    if (draft.conversation.enabled && !draft.conversation.shareImageConnection) {
+    const shouldValidateConversation =
+      !draft.conversation.shareImageConnection &&
+      (
+        hasEnabledConversationPlanning(draft.conversation) ||
+        Boolean(conversationBaseUrl || draft.conversation.apiKey.trim())
+      );
+    if (shouldValidateConversation) {
       try {
         conversationBaseUrl = normalizeImageApiBaseUrl(conversationBaseUrl);
       } catch (error) {
@@ -335,6 +337,11 @@ export default function SettingsDrawer({
       onClose={onClose}
       footer={
         <div {...stylex.props(styles.footer)}>
+          {!dataOnly ? (
+            <span aria-live="polite" {...stylex.props(styles.saveStatus, hasUnsavedChanges && styles.saveStatusDirty)}>
+              {hasUnsavedChanges ? "有未保存的更改" : "设置已保存"}
+            </span>
+          ) : null}
           <Button className={stylex.props(styles.footerButton).className} onClick={onClose}>
             {dataOnly ? "关闭" : "取消"}
           </Button>
@@ -343,6 +350,7 @@ export default function SettingsDrawer({
               type="primary"
               icon={<Save size={16} />}
               loading={saving}
+              disabled={!hasUnsavedChanges}
               className={stylex.props(styles.footerButton).className}
               onClick={() => void handleSave()}
             >
@@ -368,6 +376,7 @@ export default function SettingsDrawer({
               onUpdate={updateDraft}
               onUpdateConversation={updateConversation}
               onConnectionModeChange={handleConnectionModeChange}
+              hasUnsavedChanges={hasUnsavedChanges}
               modelOptions={modelOptions}
               modelLoading={modelLoading}
               modelError={modelError}
@@ -375,86 +384,10 @@ export default function SettingsDrawer({
             />
           ) : null}
 
-          {section === "workspace" ? (
-            <section {...stylex.props(styles.section)} aria-labelledby="generation-heading">
-            <div {...stylex.props(styles.sectionHeading)}>
-              <Typography.Title id="generation-heading" level={5}>
-                生成默认值
-              </Typography.Title>
-              <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-                模型固定为 gpt-image-2；画面比例和质量也可以在输入框下方快速切换。
-              </Typography.Paragraph>
-            </div>
-
-            <Form.Item label="模型">
-              <div {...stylex.props(styles.fixedModel)}>
-                <Tag color="blue">{IMAGE_MODEL}</Tag>
-                <span {...stylex.props(styles.fixedModelHint)}>当前版本固定使用此模型</span>
-              </div>
-            </Form.Item>
-
-            <div {...stylex.props(styles.twoColumns)}>
-              <Form.Item label="画面比例">
-                <Select<ImageSize>
-                  value={draft.size}
-                  options={IMAGE_SIZE_OPTIONS_FOR_SELECT}
-                  labelRender={({ value }) => imageSizeLabel(value as ImageSize)}
-                  optionRender={(option) => {
-                    const sizeOption = option.data as ImageSizeOption;
-                    const selected = sizeOption.value === draft.size;
-
-                    return (
-                      <div {...stylex.props(styles.sizeOption)}>
-                        <span {...stylex.props(styles.sizeOptionCopy)}>
-                          <strong {...stylex.props(styles.sizeOptionTitle)}>
-                            {`${sizeOption.label} · ${sizeOption.ratio}`}
-                          </strong>
-                          <small {...stylex.props(styles.sizeOptionDimensions)}>
-                            {sizeOption.dimensions}
-                          </small>
-                        </span>
-                        {selected ? (
-                          <Check
-                            size={15}
-                            strokeWidth={2.2}
-                            aria-hidden="true"
-                            {...stylex.props(styles.sizeOptionCheck)}
-                          />
-                        ) : null}
-                      </div>
-                    );
-                  }}
-                  popupMatchSelectWidth={260}
-                  classNames={{
-                    popup: {
-                      root: "studio-select-popup studio-ratio-select-popup",
-                      listItem: "studio-select-option",
-                    },
-                  }}
-                  onChange={(value) => updateDraft("size", value)}
-                />
-              </Form.Item>
-              <Form.Item label="图片质量">
-                <Select<ImageQuality>
-                  value={draft.quality}
-                  options={QUALITY_OPTIONS}
-                  classNames={{
-                    popup: {
-                      root: "studio-select-popup studio-quality-select-popup",
-                      listItem: "studio-select-option",
-                    },
-                  }}
-                  onChange={(value) => updateDraft("quality", value)}
-                />
-              </Form.Item>
-            </div>
-            </section>
-          ) : null}
         </Form>
 
         {section === "workspace" || section === "data" ? (
           <>
-            {section === "workspace" ? <Divider /> : null}
             <section {...stylex.props(styles.section)} aria-labelledby="local-records-heading">
           <div {...stylex.props(styles.sectionHeading)}>
             <div {...stylex.props(styles.headingWithStatus)}>
@@ -541,13 +474,10 @@ function pickConversationCredentials(
   };
 }
 
-const QUALITY_OPTIONS = [
-  { label: "低", value: "low" },
-  { label: "中", value: "medium" },
-  { label: "高", value: "high" },
-] satisfies { label: string; value: ImageQuality }[];
-
-const IMAGE_SIZE_OPTIONS_FOR_SELECT = IMAGE_SIZE_OPTIONS.map((option) => ({ ...option }));
+function hasEnabledConversationPlanning(conversation: ConversationSettings): boolean {
+  const scopes = conversation.planningScopes;
+  return scopes.single || scopes.batch || scopes.storyboard;
+}
 
 const styles = stylex.create({
   drawerTitle: {
@@ -574,65 +504,11 @@ const styles = stylex.create({
     marginBottom: 0,
     lineHeight: 1.65,
   },
-  sizeOption: {
-    minWidth: 0,
-    width: "100%",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "14px",
-  },
-  sizeOptionCopy: {
-    minWidth: 0,
-    display: "flex",
-    flexDirection: "column",
-    gap: "2px",
-    lineHeight: 1.25,
-  },
-  sizeOptionTitle: {
-    color: colors.ink,
-    fontSize: "13px",
-    fontWeight: 600,
-  },
-  sizeOptionDimensions: {
-    color: colors.muted,
-    fontSize: "11px",
-    fontVariantNumeric: "tabular-nums",
-  },
-  sizeOptionCheck: {
-    flexShrink: 0,
-    color: colors.primary,
-  },
   headingWithStatus: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
     gap: "12px",
-  },
-  fixedModel: {
-    minHeight: "40px",
-    display: "flex",
-    alignItems: "center",
-    gap: "8px",
-    padding: "6px 10px",
-    backgroundColor: colors.glassSubtle,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: colors.glassBorder,
-    borderRadius: radii.medium,
-  },
-  fixedModelHint: {
-    color: colors.muted,
-    fontSize: "12px",
-  },
-  twoColumns: {
-    display: "grid",
-    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-    gap: "12px",
-    "@media (max-width: 520px)": {
-      gridTemplateColumns: "1fr",
-      gap: 0,
-    },
   },
   stats: {
     display: "grid",
@@ -717,6 +593,13 @@ const styles = stylex.create({
     justifyContent: "flex-end",
     gap: "8px",
   },
+  saveStatus: {
+    flex: 1,
+    minWidth: 0,
+    color: colors.muted,
+    fontSize: "12px",
+  },
+  saveStatusDirty: { color: colors.warning },
   footerButton: {
     borderRadius: radii.pill,
   },

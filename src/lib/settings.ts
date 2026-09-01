@@ -4,6 +4,7 @@ import {
   IMAGE_MODEL,
   type GenerationSettings,
   type ConversationSettings,
+  type ConversationPlanningScopes,
   type GenerationMode,
   type ImageQuality,
 } from "../types";
@@ -13,11 +14,16 @@ import { isDesktopRuntime } from "./runtime";
 
 const STORAGE_KEY = "scenemeld.settings.v1";
 const LEGACY_STORAGE_KEY = "gpt-image-2-studio.settings.v1";
-const VALID_QUALITIES = new Set<ImageQuality>(["low", "medium", "high"]);
-const VALID_MODES = new Set<GenerationMode>(["direct", "variations", "storyboard"]);
+const VALID_QUALITIES = new Set<ImageQuality>(["auto", "low", "medium", "high"]);
+const VALID_MODES = new Set<GenerationMode>(["single", "batch", "storyboard"]);
+const STORYBOARD_QUANTITIES = new Set([3, 4, 6, 9]);
 
 export const DEFAULT_CONVERSATION_SETTINGS: ConversationSettings = {
-  enabled: true,
+  planningScopes: {
+    single: false,
+    batch: false,
+    storyboard: true,
+  },
   baseUrl: "",
   apiKey: "",
   model: DEFAULT_CONVERSATION_MODEL,
@@ -32,12 +38,22 @@ export const DEFAULT_SETTINGS: GenerationSettings = {
   apiKey: "",
   model: IMAGE_MODEL,
   size: "1024x1024",
-  quality: "medium",
+  quality: "auto",
   quantity: DEFAULT_IMAGE_QUANTITY,
   rememberApiKey: false,
-  mode: "direct",
+  mode: "single",
   storyboardQuantity: "auto",
   conversation: { ...DEFAULT_CONVERSATION_SETTINGS },
+};
+
+type StoredConversationSettings = Partial<
+  Omit<ConversationSettings, "planningScopes">
+> & {
+  planningScopes?: Partial<ConversationPlanningScopes>;
+  usageScopes?: {
+    storyboard?: unknown;
+    promptOptimization?: unknown;
+  };
 };
 
 interface StoredSettings {
@@ -49,9 +65,9 @@ interface StoredSettings {
   quantity?: number;
   rememberApiKey: boolean;
   apiKey?: string;
-  mode?: GenerationMode;
+  mode?: GenerationMode | "direct" | "variations";
   storyboardQuantity?: number | "auto";
-  conversation?: Partial<ConversationSettings>;
+  conversation?: StoredConversationSettings;
 }
 
 let cachedSettings: GenerationSettings | null = null;
@@ -136,7 +152,7 @@ export async function hydrateSettingsApiKey(
           }
         : {
             ...normalizedSettings.conversation,
-            apiKey: normalizedSettings.conversation.enabled ? storedConversationApiKey ?? "" : "",
+            apiKey: storedConversationApiKey ?? "",
             rememberApiKey: true,
           },
     };
@@ -186,7 +202,6 @@ export async function saveSettings(settings: GenerationSettings): Promise<void> 
     }
     if (
       !normalizedSettings.conversation.shareImageConnection &&
-      normalizedSettings.conversation.enabled &&
       normalizedSettings.rememberApiKey &&
       normalizedSettings.conversation.apiKey
     ) {
@@ -240,14 +255,12 @@ function deserializeSettings(
       : "medium",
     quantity: normalizeImageQuantity(stored.quantity),
     rememberApiKey: stored.rememberApiKey === true,
-    mode: VALID_MODES.has(stored.mode as GenerationMode)
-      ? (stored.mode as GenerationMode)
-      : "direct",
+    mode: migrateGenerationMode(stored.mode),
     storyboardQuantity:
       stored.storyboardQuantity === "auto"
         ? "auto"
-        : typeof stored.storyboardQuantity === "number"
-          ? normalizeImageQuantity(stored.storyboardQuantity)
+        : typeof stored.storyboardQuantity === "number" && STORYBOARD_QUANTITIES.has(stored.storyboardQuantity)
+          ? stored.storyboardQuantity
           : "auto",
     conversation: deserializeConversationSettings(stored.conversation, stored),
   };
@@ -283,37 +296,49 @@ function persistLocalPreferences(settings: GenerationSettings): void {
 }
 
 function normalizeSettings(settings: GenerationSettings): GenerationSettings {
-  const conversation = {
-    ...DEFAULT_CONVERSATION_SETTINGS,
-    ...(settings.conversation ?? {}),
+  const source = settings.conversation ?? DEFAULT_CONVERSATION_SETTINGS;
+  const conversation: ConversationSettings = {
+    planningScopes: normalizeConversationPlanningScopes(source.planningScopes),
+    baseUrl: typeof source.baseUrl === "string" ? source.baseUrl : "",
+    apiKey: typeof source.apiKey === "string" ? source.apiKey : "",
+    model: typeof source.model === "string" && source.model
+      ? source.model
+      : DEFAULT_CONVERSATION_SETTINGS.model,
+    supportsVision: source.supportsVision === true,
+    supportsStructuredOutput: source.supportsStructuredOutput !== false,
+    rememberApiKey: settings.rememberApiKey,
+    shareImageConnection: source.shareImageConnection !== false,
   };
   if (conversation.shareImageConnection) {
     conversation.baseUrl = settings.baseUrl;
     conversation.apiKey = settings.apiKey;
   }
-  conversation.rememberApiKey = settings.rememberApiKey;
   return {
     ...settings,
     model: IMAGE_MODEL,
     quantity: normalizeImageQuantity(settings.quantity),
-    mode: VALID_MODES.has(settings.mode) ? settings.mode : "direct",
+    mode: VALID_MODES.has(settings.mode) ? settings.mode : "single",
     storyboardQuantity:
       settings.storyboardQuantity === "auto"
         ? "auto"
-        : normalizeImageQuantity(settings.storyboardQuantity),
+        : STORYBOARD_QUANTITIES.has(settings.storyboardQuantity)
+          ? settings.storyboardQuantity
+          : "auto",
     conversation,
   };
 }
 
 function deserializeConversationSettings(
-  stored: Partial<ConversationSettings> | undefined,
+  stored: StoredConversationSettings | undefined,
   root: Partial<StoredSettings>,
 ): ConversationSettings {
-  const conversation = { ...DEFAULT_CONVERSATION_SETTINGS, ...(stored ?? {}) };
+  const conversation = stored ?? {};
   const share = conversation.shareImageConnection !== false;
   return {
-    ...conversation,
-    enabled: conversation.enabled !== false,
+    planningScopes: normalizeConversationPlanningScopes(
+      conversation.planningScopes,
+      conversation.usageScopes,
+    ),
     baseUrl: share && typeof root.baseUrl === "string" ? root.baseUrl : String(conversation.baseUrl ?? ""),
     apiKey: share
       ? typeof root.apiKey === "string"
@@ -330,8 +355,33 @@ function deserializeConversationSettings(
   };
 }
 
+function normalizeConversationPlanningScopes(
+  value: unknown,
+  legacyUsageScopes?: StoredConversationSettings["usageScopes"],
+): ConversationPlanningScopes {
+  if (!value || typeof value !== "object") {
+    return {
+      single: false,
+      batch: false,
+      storyboard: legacyUsageScopes?.storyboard !== false,
+    };
+  }
+  const scopes = value as Partial<ConversationPlanningScopes>;
+  return {
+    single: scopes.single === true,
+    batch: scopes.batch === true,
+    storyboard: scopes.storyboard !== false,
+  };
+}
+
 function removeLegacySettings(): void {
   if (typeof window !== "undefined") {
     window.localStorage.removeItem(LEGACY_STORAGE_KEY);
   }
+}
+
+function migrateGenerationMode(value: unknown): GenerationMode {
+  if (value === "direct") return "single";
+  if (value === "variations") return "batch";
+  return VALID_MODES.has(value as GenerationMode) ? (value as GenerationMode) : "single";
 }

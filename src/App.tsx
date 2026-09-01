@@ -4,7 +4,9 @@ import { App as AntdApp, Drawer, Spin } from "antd";
 
 import AppOverlays, { type SettingsPanel } from "./components/AppOverlays";
 import Composer from "./components/Composer";
+import ImageCopyRecoveryDialog from "./components/ImageCopyRecoveryDialog";
 import PromptOptimizationDialog from "./components/PromptOptimizationDialog";
+import StoryboardReviewDialog from "./components/StoryboardReviewDialog";
 import WindowChrome from "./components/WindowChrome";
 import MessageFeed from "./components/MessageFeed";
 import Sidebar from "./components/Sidebar";
@@ -14,22 +16,17 @@ import useConversationDeletion from "./hooks/useConversationDeletion";
 import useConversationRenaming from "./hooks/useConversationRenaming";
 import useImageDrafts from "./hooks/useImageDrafts";
 import useDesktopUpdater from "./hooks/useDesktopUpdater";
+import useImageCopyActions from "./hooks/useImageCopyActions";
 import usePromptSubmission from "./hooks/usePromptSubmission";
 import {
   createConversation,
   titleForMessages,
 } from "./lib/conversations";
 import { resolveMessageImageAttachments } from "./lib/image-attachments";
-import { applyPromptSettings, parsePromptDirectives } from "./lib/prompt-directives";
+import { parsePromptDirectives, promptDirectiveSuffix } from "./lib/prompt-directives";
 import { optimizePrompt } from "./lib/prompt-optimizer";
 import { endpointHostLabel } from "./lib/image-endpoint";
-import {
-  copyImageFromUrl,
-  downloadImageBlob,
-  downloadImageFromUrl,
-  generatedImageFileName,
-  type ImageActionSource,
-} from "./lib/image-actions";
+import { downloadImageBlob, generatedImageFileName } from "./lib/image-actions";
 import {
   loadNavigationCollapsed,
   saveNavigationCollapsed,
@@ -62,6 +59,7 @@ import type {
   Conversation,
   GenerationSettings,
   PromptOptimizationResult,
+  StoryboardPlan,
   UserMessage,
   WorkspaceSnapshot,
 } from "./types";
@@ -86,15 +84,20 @@ export default function StudioApp() {
   const [optimizationResult, setOptimizationResult] = useState<PromptOptimizationResult | null>(null);
   const [optimizationSourcePrompt, setOptimizationSourcePrompt] = useState("");
   const [optimizationOpen, setOptimizationOpen] = useState(false);
+  const [storyboardReviewPlan, setStoryboardReviewPlan] = useState<StoryboardPlan | null>(null);
   const [historyClearing, setHistoryClearing] = useState(false);
   const [lastConnectionStatus, setLastConnectionStatus] =
     useState<SettledConnectionStatus>("ready");
   const abortRef = useRef<AbortController | null>(null);
   const optimizationAbortRef = useRef<AbortController | null>(null);
+  const storyboardReviewResolverRef = useRef<
+    ((plan: StoryboardPlan | null) => void) | null
+  >(null);
   const initializationStarted = useRef(false);
   const settingsHydrationStarted = useRef(false);
   const storageWarningShown = useRef(false);
   const desktopUpdater = useDesktopUpdater({ busy: isGenerating || Boolean(abortRef.current) });
+  const imageCopyActions = useImageCopyActions(toast);
 
   const openConnectionSettings = () => setSettingsPanel("connection");
   const openDataSettings = () => setSettingsPanel("data");
@@ -213,6 +216,23 @@ export default function StudioApp() {
     [updateConversation],
   );
 
+  const reviewStoryboardPlan = useCallback(
+    (plan: StoryboardPlan) =>
+      new Promise<StoryboardPlan | null>((resolve) => {
+        storyboardReviewResolverRef.current?.(null);
+        storyboardReviewResolverRef.current = resolve;
+        setStoryboardReviewPlan(plan);
+      }),
+    [],
+  );
+
+  const finishStoryboardReview = useCallback((plan: StoryboardPlan | null) => {
+    const resolve = storyboardReviewResolverRef.current;
+    storyboardReviewResolverRef.current = null;
+    setStoryboardReviewPlan(null);
+    resolve?.(plan);
+  }, []);
+
   const submitPrompt = usePromptSubmission({
     workspace,
     activeConversation,
@@ -223,13 +243,13 @@ export default function StudioApp() {
     draftImageSources,
     storageAvailable,
     toast,
-    setSettings,
     setIsGenerating,
     setStorageAvailable,
     setLastConnectionStatus,
     setDraft,
     clearDraftImages,
     openConnectionSettings,
+    reviewStoryboardPlan,
     updateConversation,
     updateAssistantMessage,
   });
@@ -242,23 +262,33 @@ export default function StudioApp() {
       toast.error(directiveResult.errors[0]);
       return;
     }
-    const effectiveSettings = applyPromptSettings(settings, directiveResult.settingsPatch);
+    if (
+      !settings.conversation.baseUrl ||
+      !settings.conversation.apiKey ||
+      !settings.conversation.model
+    ) {
+      setSettingsPanel("connection");
+      toast.warning("AI 辅助连接尚未配置完整，已为你打开连接设置。");
+      return;
+    }
     if (directiveResult.directives.length) {
-      setSettings(effectiveSettings);
-      saveSettingsPreferences(effectiveSettings);
-      toast.info(`已同步提示词规格：${directiveResult.directives.map((item) => item.label).join(" · ")}`);
+      toast.info("已识别提示词中的生成规格；它们只会影响本次生成，不会修改默认设置。");
     }
     const controller = new AbortController();
     optimizationAbortRef.current = controller;
     setIsOptimizingPrompt(true);
     try {
       const result = await optimizePrompt(
-        effectiveSettings.conversation,
+        settings.conversation,
         directiveResult.cleanPrompt,
         controller.signal,
       );
+      const directiveSuffix = promptDirectiveSuffix(directiveResult);
+      const optimizedPrompt = directiveSuffix
+        ? appendWithinPromptLimit(result.optimizedPrompt, directiveSuffix)
+        : result.optimizedPrompt;
       setOptimizationSourcePrompt(originalPrompt);
-      setOptimizationResult(result);
+      setOptimizationResult({ ...result, optimizedPrompt });
       setOptimizationOpen(true);
     } catch (error) {
       if (!controller.signal.aborted) {
@@ -280,7 +310,9 @@ export default function StudioApp() {
       normalizedSettings.conversation.apiKey !== settings.conversation.apiKey ||
       normalizedSettings.conversation.model !== settings.conversation.model ||
       normalizedSettings.conversation.supportsStructuredOutput !== settings.conversation.supportsStructuredOutput ||
-      normalizedSettings.conversation.enabled !== settings.conversation.enabled ||
+      normalizedSettings.conversation.planningScopes.single !== settings.conversation.planningScopes.single ||
+      normalizedSettings.conversation.planningScopes.batch !== settings.conversation.planningScopes.batch ||
+      normalizedSettings.conversation.planningScopes.storyboard !== settings.conversation.planningScopes.storyboard ||
       normalizedSettings.conversation.shareImageConnection !== settings.conversation.shareImageConnection;
     const credentialStorageChanged = normalizedSettings.rememberApiKey !== settings.rememberApiKey;
     const connectionSettingsChanged =
@@ -320,7 +352,14 @@ export default function StudioApp() {
 
   const handleQuickSettingChange = (patch: Partial<GenerationSettings>) => {
     setSettings((current) => {
-      const next = { ...current, ...patch, model: IMAGE_MODEL };
+      const next = {
+        ...current,
+        ...patch,
+        ...(patch.mode === "batch" && (patch.quantity ?? current.quantity) < 2
+          ? { quantity: 2 }
+          : {}),
+        model: IMAGE_MODEL,
+      };
       saveSettingsPreferences(next);
       return next;
     });
@@ -415,26 +454,6 @@ export default function StudioApp() {
     }
   };
 
-  const handleCopyImage = async (source: ImageActionSource) => {
-    try {
-      await copyImageFromUrl(source);
-      toast.success("图片已复制。");
-    } catch {
-      toast.error("图片复制失败，请使用下载图片。");
-    }
-  };
-
-  const handleDownloadImage = async (source: ImageActionSource) => {
-    try {
-      const result = await downloadImageFromUrl(source);
-      if (result === "saved") {
-        toast.success("图片已保存。");
-      }
-    } catch {
-      toast.error("无法读取本地图片，请重新生成或重试。");
-    }
-  };
-
   const handleDownload = async (item: AssistantMessage) => {
     try {
       const blob = item.imageDataUrl
@@ -470,7 +489,7 @@ export default function StudioApp() {
 
       await submitPrompt(
         item.prompt,
-        { ...item.request, quantity: 1 },
+        { ...item.request, quantity: 1, mode: "single" },
         activeConversation?.id,
         resolved.sources,
       );
@@ -663,9 +682,9 @@ export default function StudioApp() {
               conversationId={activeConversation.id}
               messages={activeConversation.messages}
               onCopy={handleCopy}
-              onCopyImage={handleCopyImage}
+              onCopyImage={imageCopyActions.copyImage}
               onDownload={handleDownload}
-              onDownloadImage={handleDownloadImage}
+              onDownloadImage={imageCopyActions.downloadImage}
               onRegenerate={handleRegenerate}
               onEditPrompt={handleEditPrompt}
               onContinueEditing={handleContinueEditing}
@@ -688,7 +707,10 @@ export default function StudioApp() {
           onRemoveFile={removeDraftImage}
           onSubmit={(value) => void submitPrompt(value)}
           onOptimize={(value) => void handleOptimizePrompt(value)}
-          onCancel={() => abortRef.current?.abort()}
+          onCancel={() => {
+            abortRef.current?.abort();
+            finishStoryboardReview(null);
+          }}
           onQuickSettingChange={handleQuickSettingChange}
         />
       </main>
@@ -721,6 +743,20 @@ export default function StudioApp() {
         }}
       />
 
+      <StoryboardReviewDialog
+        plan={storyboardReviewPlan}
+        onCancel={() => finishStoryboardReview(null)}
+        onConfirm={finishStoryboardReview}
+      />
+
+      <ImageCopyRecoveryDialog
+        error={imageCopyActions.recoveryError}
+        retrying={imageCopyActions.retrying}
+        onClose={imageCopyActions.closeRecovery}
+        onRetry={imageCopyActions.retryCopy}
+        onDownload={imageCopyActions.downloadRecovery}
+      />
+
       <Drawer
         placement="left"
         width={284}
@@ -744,4 +780,10 @@ export default function StudioApp() {
       </Drawer>
     </div>
   );
+}
+
+function appendWithinPromptLimit(prompt: string, suffix: string): string {
+  const separator = "\n\n";
+  const availableLength = Math.max(0, 20_000 - separator.length - suffix.length);
+  return `${prompt.slice(0, availableLength).trimEnd()}${separator}${suffix}`;
 }

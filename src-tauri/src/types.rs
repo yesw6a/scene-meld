@@ -10,6 +10,7 @@ pub struct ImageRequest {
     pub prompt: String,
     pub size: String,
     pub quality: String,
+    pub output_format: String,
     #[serde(default)]
     pub attachments: Vec<ImageAttachment>,
 }
@@ -48,6 +49,20 @@ pub struct ConversationRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationResponse {
     pub content: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImagePromptPlanningRequest {
+    pub request_id: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub model: String,
+    pub source_prompt: String,
+    pub prompt_count: usize,
+    pub supports_structured_output: bool,
+    #[serde(default)]
+    pub vision_images: Vec<String>,
 }
 
 #[derive(Debug, Deserialize)]

@@ -1,5 +1,6 @@
 mod http;
 mod files;
+mod planning;
 mod request_state;
 mod secrets;
 mod types;
@@ -7,8 +8,9 @@ mod types;
 use request_state::RequestState;
 use tauri::State;
 use types::{
-    CommandError, ConversationRequest, ConversationResponse, ImageRequest, ImageResponse,
-    ModelListRequest, ModelListResponse, PromptOptimizationRequest, PromptOptimizationResponse,
+    CommandError, ConversationRequest, ConversationResponse, ImagePromptPlanningRequest,
+    ImageRequest, ImageResponse, ModelListRequest, ModelListResponse, PromptOptimizationRequest,
+    PromptOptimizationResponse,
 };
 
 #[tauri::command]
@@ -35,6 +37,20 @@ async fn plan_storyboard(
     let mut cancelled = state.begin(&request.request_id)?;
     let result = tokio::select! {
         response = http::plan_storyboard(&request) => response,
+        _ = &mut cancelled => Err(CommandError::cancelled()),
+    };
+    state.finish(&request.request_id)?;
+    result
+}
+
+#[tauri::command]
+async fn plan_image_prompts(
+    request: ImagePromptPlanningRequest,
+    state: State<'_, RequestState>,
+) -> Result<ConversationResponse, CommandError> {
+    let mut cancelled = state.begin(&request.request_id)?;
+    let result = tokio::select! {
+        response = http::plan_image_prompts(&request) => response,
         _ = &mut cancelled => Err(CommandError::cancelled()),
     };
     state.finish(&request.request_id)?;
@@ -145,6 +161,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
             #[cfg(desktop)]
             {
@@ -170,6 +187,7 @@ pub fn run() {
             generate_image,
             edit_image,
             plan_storyboard,
+            plan_image_prompts,
             optimize_prompt,
             list_conversation_models,
             cancel_image_request,

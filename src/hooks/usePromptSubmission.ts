@@ -1,13 +1,17 @@
 import { useCallback, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 
 import { requestEditedImage, requestGeneratedImage } from "../lib/api";
-import { normalizeImageQuantity } from "../lib/image-batch";
 import { runImageGenerationBatch } from "../lib/image-batch-generation";
+import { planImagePrompts } from "../lib/image-prompt-planner";
 import { planStoryboard } from "../lib/conversation-api";
 import { createId, titleForSubmittedPrompt } from "../lib/conversations";
+import { resolveGenerationSubmission } from "../lib/generation-plan";
+import {
+  appendImageCanvasConstraint,
+  inspectGeneratedImageAspect,
+} from "../lib/image-aspect";
 import { prepareImageAttachments } from "../lib/image-attachments";
-import { applyPromptSettings, parsePromptDirectives } from "../lib/prompt-directives";
-import { saveSettingsPreferences } from "../lib/settings";
+import { parsePromptDirectives } from "../lib/prompt-directives";
 import { runStoryboardGeneration } from "../lib/storyboard-generation";
 import { base64ToBlob, saveGeneratedImage } from "../lib/studio-db";
 import {
@@ -40,13 +44,13 @@ interface UsePromptSubmissionOptions {
   draftImageSources: ImageAttachmentSource[];
   storageAvailable: boolean;
   toast: ToastApi;
-  setSettings: Dispatch<SetStateAction<GenerationSettings>>;
   setIsGenerating: Dispatch<SetStateAction<boolean>>;
   setStorageAvailable: Dispatch<SetStateAction<boolean>>;
   setLastConnectionStatus: Dispatch<SetStateAction<SettledConnectionStatus>>;
   setDraft: Dispatch<SetStateAction<string>>;
   clearDraftImages: () => void;
   openConnectionSettings: () => void;
+  reviewStoryboardPlan: (plan: StoryboardPlan) => Promise<StoryboardPlan | null>;
   updateConversation: (conversationId: string, update: (conversation: Conversation) => Conversation) => void;
   updateAssistantMessage: (conversationId: string, assistantId: string, patch: Partial<AssistantMessage>) => void;
 }
@@ -70,21 +74,19 @@ export default function usePromptSubmission(options: UsePromptSubmissionOptions)
       }
 
       const directiveResult = snapshotOverride
-        ? { cleanPrompt: originalPrompt, settingsPatch: {}, directives: [], errors: [] }
+        ? {
+            cleanPrompt: originalPrompt,
+            settingsPatch: {},
+            directives: [],
+            errors: [],
+            errorsByKey: {},
+          }
         : parsePromptDirectives(originalPrompt);
       if (directiveResult.errors.length) {
         options.toast.error(directiveResult.errors[0]!);
         return;
       }
       const prompt = directiveResult.cleanPrompt;
-      const effectiveSettings = snapshotOverride
-        ? options.settings
-        : applyPromptSettings(options.settings, directiveResult.settingsPatch);
-      if (!snapshotOverride && directiveResult.directives.length) {
-        options.setSettings(effectiveSettings);
-        saveSettingsPreferences(effectiveSettings);
-        options.toast.info(`已根据提示词设置：${directiveResult.directives.map((item) => item.label).join(" · ")}`);
-      }
       if (!options.configured) {
         options.openConnectionSettings();
         options.toast.warning("请先填写 API 基础地址与 API Key。");
@@ -96,28 +98,40 @@ export default function usePromptSubmission(options: UsePromptSubmissionOptions)
       const assistantId = createId("assistant");
       const now = Date.now();
       const attachmentSources = attachmentSourcesOverride ?? options.draftImageSources;
-      const quantity = normalizeImageQuantity(snapshotOverride?.quantity ?? effectiveSettings.quantity);
-      const requestSnapshot: GenerationSnapshot = {
-        model: IMAGE_MODEL,
-        size: snapshotOverride?.size ?? effectiveSettings.size,
-        quality: snapshotOverride?.quality ?? effectiveSettings.quality,
-        quantity,
-        mode: snapshotOverride?.mode ?? effectiveSettings.mode,
-        storyboardQuantity: snapshotOverride?.storyboardQuantity ?? effectiveSettings.storyboardQuantity,
+      const resolved = snapshotOverride
+        ? null
+        : resolveGenerationSubmission(options.settings, directiveResult);
+      const requestSnapshot: GenerationSnapshot = snapshotOverride
+        ? { ...snapshotOverride, quantity: 1, mode: "single" }
+        : {
+            model: IMAGE_MODEL,
+            size: resolved!.settings.size,
+            quality: resolved!.settings.quality,
+            quantity: resolved!.plan.mode === "batch" ? resolved!.plan.count : 1,
+            mode: resolved!.plan.mode,
+            storyboardQuantity:
+              resolved!.plan.mode === "storyboard"
+                ? resolved!.plan.shotCount
+                : resolved!.settings.storyboardQuantity,
+          };
+      const requestSettings: GenerationRequestSettings = {
+        ...options.settings,
+        ...(resolved?.settings ?? requestSnapshot),
+        ...requestSnapshot,
       };
-      const requestSettings: GenerationRequestSettings = { ...effectiveSettings, ...requestSnapshot };
+      const plan = resolved?.plan ?? { mode: "single" as const, count: 1 as const };
 
-      if (requestSnapshot.mode === "storyboard") {
+      if (plan.mode === "storyboard") {
         await submitStoryboard({
           options, originalPrompt, prompt, conversationId, userId, now, attachmentSources,
-          attachmentSourcesOverride, requestSnapshot, requestSettings, effectiveSettings,
+          attachmentSourcesOverride, requestSnapshot, requestSettings,
         });
         return;
       }
-      if (quantity > 1) {
+      if (plan.mode === "batch") {
         await submitBatch({
           options, originalPrompt, prompt, conversationId, userId, now, attachmentSources,
-          attachmentSourcesOverride, requestSnapshot, requestSettings, quantity,
+          attachmentSourcesOverride, requestSnapshot, requestSettings, quantity: plan.count,
         });
         return;
       }
@@ -143,9 +157,7 @@ interface SubmissionContext {
   requestSettings: GenerationRequestSettings;
 }
 
-async function submitStoryboard(context: SubmissionContext & {
-  effectiveSettings: GenerationSettings;
-}): Promise<void> {
+async function submitStoryboard(context: SubmissionContext): Promise<void> {
   const { options } = context;
   const batchId = createId("storyboard");
   const controller = new AbortController();
@@ -156,7 +168,7 @@ async function submitStoryboard(context: SubmissionContext & {
     let plan: StoryboardPlan;
     try {
       plan = await planStoryboard(
-        context.effectiveSettings.conversation,
+        context.requestSettings.conversation,
         context.prompt,
         context.requestSnapshot.storyboardQuantity ?? "auto",
         context.attachmentSources,
@@ -166,13 +178,27 @@ async function submitStoryboard(context: SubmissionContext & {
       if (controller.signal.aborted) throw error;
       options.toast.warning("对话 AI 规划失败，已切换为基础分镜模板。 ");
       plan = await planStoryboard(
-        { ...context.effectiveSettings.conversation, enabled: false },
+        {
+          ...context.requestSettings.conversation,
+          planningScopes: {
+            ...context.requestSettings.conversation.planningScopes,
+            storyboard: false,
+          },
+        },
         context.prompt,
         context.requestSnapshot.storyboardQuantity ?? "auto",
         context.attachmentSources,
         controller.signal,
       );
     }
+    const reviewedPlan = await options.reviewStoryboardPlan(plan);
+    if (!reviewedPlan || controller.signal.aborted) {
+      if (!controller.signal.aborted) {
+        options.toast.info("已取消分镜生成，提示词和参考图仍保留在输入框中。");
+      }
+      return;
+    }
+    plan = reviewedPlan;
     const outcome = await runStoryboardGeneration({
       plan,
       batchId,
@@ -226,8 +252,14 @@ async function submitBatch(context: SubmissionContext & { quantity: number }): P
   options.requestRef.current = controller;
   options.setIsGenerating(true);
   try {
+    const prompts = await resolveImagePrompts(
+      context,
+      "batch",
+      context.quantity,
+      controller.signal,
+    );
     const outcome = await runImageGenerationBatch({
-      prompt: context.prompt,
+      prompts,
       batchId,
       quantity: context.quantity,
       requestSettings: context.requestSettings,
@@ -268,7 +300,7 @@ async function submitBatch(context: SubmissionContext & { quantity: number }): P
   } catch (error) {
     if (!controller.signal.aborted) {
       options.setLastConnectionStatus("error");
-      options.toast.error(error instanceof Error ? error.message : "批量生成无法启动，请检查连接设置后重试。");
+      options.toast.error(error instanceof Error ? error.message : "多图生成无法启动，请检查连接设置后重试。");
     }
   } finally {
     finishRequest(options, controller);
@@ -280,36 +312,57 @@ async function submitSingle(context: SubmissionContext & { assistantId: string }
   const controller = new AbortController();
   options.requestRef.current = controller;
   options.setIsGenerating(true);
-  const prepared = await prepareImageAttachments(context.attachmentSources, options.storageAvailable, context.now);
-  if (prepared.persistenceFailed) {
-    options.setStorageAvailable(false);
-    options.toast.warning("参考图仍可用于本次请求，但无法保存到本地；刷新页面后可能无法再次编辑。");
-  }
-  options.updateConversation(context.conversationId, (conversation) => ({
-    ...conversation,
-    title: titleForSubmittedPrompt(conversation, context.originalPrompt),
-    messages: [...conversation.messages, {
-      id: context.userId,
-      type: "user",
-      prompt: context.originalPrompt,
-      createdAt: context.now,
-      ...(prepared.messageAttachments.length ? { attachments: prepared.messageAttachments } : {}),
-    }, {
-      id: context.assistantId,
-      type: "assistant",
-      prompt: context.prompt,
-      request: context.requestSnapshot,
-      status: "loading",
-      createdAt: context.now + 1,
-    }],
-    updatedAt: context.now,
-  }));
-  clearDraftIfCurrent(context);
+  let assistantCreated = false;
   try {
+    const plannedPrompts = await resolveImagePrompts(
+      context,
+      "single",
+      1,
+      controller.signal,
+    );
+    const executionPrompt = plannedPrompts[0] ?? context.prompt;
+    const prepared = await prepareImageAttachments(
+      context.attachmentSources,
+      options.storageAvailable,
+      context.now,
+    );
+    if (prepared.persistenceFailed) {
+      options.setStorageAvailable(false);
+      options.toast.warning("参考图仍可用于本次请求，但无法保存到本地；刷新页面后可能无法再次编辑。");
+    }
+    options.updateConversation(context.conversationId, (conversation) => ({
+      ...conversation,
+      title: titleForSubmittedPrompt(conversation, context.originalPrompt),
+      messages: [...conversation.messages, {
+        id: context.userId,
+        type: "user",
+        prompt: context.originalPrompt,
+        createdAt: context.now,
+        ...(prepared.messageAttachments.length ? { attachments: prepared.messageAttachments } : {}),
+      }, {
+        id: context.assistantId,
+        type: "assistant",
+        prompt: executionPrompt,
+        request: context.requestSnapshot,
+        status: "loading",
+        createdAt: context.now + 1,
+      }],
+      updatedAt: context.now,
+    }));
+    assistantCreated = true;
+    clearDraftIfCurrent(context);
+    const requestPrompt = appendImageCanvasConstraint(
+      executionPrompt,
+      context.requestSettings.size,
+    );
     const result = prepared.requestAttachments.length
-      ? await requestEditedImage(context.requestSettings, context.prompt, prepared.requestAttachments, controller.signal)
-      : await requestGeneratedImage(context.requestSettings, context.prompt, controller.signal);
+      ? await requestEditedImage(context.requestSettings, requestPrompt, prepared.requestAttachments, controller.signal)
+      : await requestGeneratedImage(context.requestSettings, requestPrompt, controller.signal);
     const imageDataUrl = `data:${result.mimeType};base64,${result.image}`;
+    const inspection = await inspectGeneratedImageAspect(
+      imageDataUrl,
+      context.requestSettings.size,
+    );
     let imageStored = false;
     if (options.storageAvailable) {
       try {
@@ -326,17 +379,62 @@ async function submitSingle(context: SubmissionContext & { assistantId: string }
       mimeType: result.mimeType,
       revisedPrompt: result.revisedPrompt,
       source: result.source,
+      aspectStatus: inspection.status,
+      ...(inspection.width && inspection.height
+        ? { actualWidth: inspection.width, actualHeight: inspection.height }
+        : {}),
     });
     options.setLastConnectionStatus("success");
   } catch (error) {
     const aborted = error instanceof Error && error.name === "AbortError";
-    options.updateAssistantMessage(context.conversationId, context.assistantId, {
-      status: aborted ? "aborted" : "error",
-      error: aborted ? "请求已由你停止。" : error instanceof Error ? error.message : "未知错误，请检查连接设置后重试。",
-    });
+    const errorMessage = aborted
+      ? "请求已由你停止。"
+      : error instanceof Error
+        ? error.message
+        : "未知错误，请检查连接设置后重试。";
+    if (assistantCreated) {
+      options.updateAssistantMessage(context.conversationId, context.assistantId, {
+        status: aborted ? "aborted" : "error",
+        error: errorMessage,
+      });
+    } else if (!aborted) {
+      options.toast.error(errorMessage);
+    }
     if (!aborted) options.setLastConnectionStatus("error");
   } finally {
     finishRequest(options, controller);
+  }
+}
+
+async function resolveImagePrompts(
+  context: SubmissionContext,
+  mode: "single" | "batch",
+  count: number,
+  signal: AbortSignal,
+): Promise<string[]> {
+  if (!context.requestSettings.conversation.planningScopes[mode]) {
+    return Array.from({ length: count }, () => context.prompt);
+  }
+
+  try {
+    const plan = await planImagePrompts(
+      context.requestSettings.conversation,
+      context.prompt,
+      count,
+      context.attachmentSources,
+      signal,
+    );
+    return plan.prompts;
+  } catch (error) {
+    if (signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+      throw error;
+    }
+    context.options.toast.warning(
+      mode === "batch"
+        ? "多图 AI 规划失败，已使用原提示词继续整批生成。"
+        : "单图 AI 规划失败，已使用原提示词继续生成。",
+    );
+    return Array.from({ length: count }, () => context.prompt);
   }
 }
 

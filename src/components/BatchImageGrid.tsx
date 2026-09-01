@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import * as stylex from "@stylexjs/stylex";
 
+import { qualityLabel } from "../lib/generation-plan";
 import { imageSizeLabel } from "../lib/image-sizes";
 import type { AssistantMessage } from "../types";
 import { colors, motion, radii } from "../styles/tokens.stylex";
@@ -42,11 +43,11 @@ export default function BatchImageGrid({
   });
 
   return (
-    <div {...stylex.props(styles.root)} aria-label="批量生成结果">
+    <div {...stylex.props(styles.root)} aria-label="多图生成结果">
       <div {...stylex.props(styles.header)}>
         <div {...stylex.props(styles.headerCopy)}>
           <span {...stylex.props(styles.title)}>
-            {messages.some((message) => message.shotId) ? "分镜结果" : "批量结果"}
+            {messages.some((message) => message.shotId) ? "分镜结果" : "多图结果"}
           </span>
           {request ? (
             <span {...stylex.props(styles.meta)}>
@@ -127,10 +128,6 @@ function failureLabel(failedCount: number, abortedCount: number): string {
   }
 
   return fragments.join("，");
-}
-
-function qualityLabel(quality: AssistantMessage["request"]["quality"]): string {
-  return { low: "低质量", medium: "中质量", high: "高质量" }[quality];
 }
 
 function gridLayout(count: number) {

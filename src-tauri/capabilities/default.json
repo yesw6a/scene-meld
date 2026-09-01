@@ -12,6 +12,7 @@
     "core:window:allow-is-maximized",
     "core:event:allow-listen",
     "dialog:default",
+    "clipboard-manager:allow-write-image",
     "process:default",
     "updater:default"
   ]

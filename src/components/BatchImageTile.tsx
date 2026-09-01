@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 
 import type { ImageActionSource } from "../lib/image-actions";
-import { formatImageAspectRatio } from "../lib/image-aspect";
-import { imageAspectRatio, imageSizeLabel } from "../lib/image-sizes";
+import { imageDimensionMismatchMessage } from "../lib/image-aspect";
+import { imageAspectRatio } from "../lib/image-sizes";
 import type { AssistantMessage } from "../types";
 import { colors, motion, radii } from "../styles/tokens.stylex";
 import ImageResultCard from "./ImageResultCard";
@@ -40,7 +40,7 @@ export default function BatchImageTile({
   return (
     <article
       {...stylex.props(styles.root)}
-      aria-label={`批量结果，第 ${index + 1} 张，共 ${total} 张，${state.label}`}
+      aria-label={`多图结果，第 ${index + 1} 张，共 ${total} 张，${state.label}`}
     >
       {message.shotTitle ? (
         <div {...stylex.props(styles.shotLabel)}>
@@ -101,13 +101,7 @@ function resultState(message: AssistantMessage): {
   detail?: string;
 } {
   if (message.status === "loading") {
-    return message.aspectStatus === "retrying"
-      ? {
-          kind: "loading",
-          label: "正在按比例重试",
-          detail: "正在串行重新生成，以匹配所选画布比例。",
-        }
-      : { kind: "loading", label: "正在生成" };
+    return { kind: "loading", label: "正在生成" };
   }
 
   if (message.status === "aborted") {
@@ -134,15 +128,11 @@ function aspectMismatchDetail(message: AssistantMessage): string | undefined {
     return undefined;
   }
 
-  const actualRatio =
-    message.actualWidth && message.actualHeight
-      ? `实际 ${formatImageAspectRatio(message.actualWidth, message.actualHeight)}（${message.actualWidth} x ${message.actualHeight}）`
-      : "实际比例未匹配";
-  const recovery = message.aspectRetried
-    ? "已尝试自动重试，保留原图。"
-    : "已保留原图。";
-
-  return `${actualRatio}，未符合 ${imageSizeLabel(message.request.size)}。${recovery}`;
+  return `${imageDimensionMismatchMessage(
+    message.request.size,
+    message.actualWidth,
+    message.actualHeight,
+  )} 已保留这张图片；如需再试，请点击“按原设置重试此张”，这会发起一次新的生成请求。`;
 }
 
 function stageStyle(message: AssistantMessage): CSSProperties {

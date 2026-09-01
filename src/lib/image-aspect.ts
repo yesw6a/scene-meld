@@ -1,9 +1,8 @@
 import type { ImageAspectStatus, ImageRequestSize } from "../types";
-
-const ASPECT_RATIO_TOLERANCE = 0.03;
+import { parseImageRequestSize } from "./image-model-capabilities";
 
 export interface ImageAspectInspection {
-  status: Exclude<ImageAspectStatus, "retrying">;
+  status: ImageAspectStatus;
   width?: number;
   height?: number;
 }
@@ -13,11 +12,13 @@ interface ImageDimensions {
   height: number;
 }
 
+const IMAGE_ASPECT_RATIO_TOLERANCE = 0.005;
+
 export function appendImageCanvasConstraint(
   prompt: string,
   size: ImageRequestSize,
 ): string {
-  const dimensions = requestedImageDimensions(size);
+  const dimensions = parseImageRequestSize(size);
   if (!dimensions) {
     return prompt;
   }
@@ -39,19 +40,15 @@ export async function inspectGeneratedImageAspect(
   dataUrl: string,
   requestedSize: ImageRequestSize,
 ): Promise<ImageAspectInspection> {
-  const requested = requestedImageDimensions(requestedSize);
+  const requested = parseImageRequestSize(requestedSize);
   if (!requested) {
     return { status: "unverified" };
   }
 
   try {
     const actual = await readImageDimensions(dataUrl);
-    const requestedRatio = requested.width / requested.height;
-    const actualRatio = actual.width / actual.height;
-    const relativeDifference = Math.abs(actualRatio - requestedRatio) / requestedRatio;
-
     return {
-      status: relativeDifference <= ASPECT_RATIO_TOLERANCE ? "matched" : "mismatched",
+      status: hasMatchingAspectRatio(requested, actual) ? "matched" : "mismatched",
       width: actual.width,
       height: actual.height,
     };
@@ -69,14 +66,40 @@ export function formatImageAspectRatio(width: number, height: number): string {
   return `${Math.round(width) / divisor}:${Math.round(height) / divisor}`;
 }
 
-function requestedImageDimensions(size: ImageRequestSize): ImageDimensions | null {
-  const [rawWidth, rawHeight] = size.split("x");
-  const width = Number(rawWidth);
-  const height = Number(rawHeight);
+export function imageDimensionMismatchMessage(
+  requestedSize: ImageRequestSize,
+  actualWidth?: number,
+  actualHeight?: number,
+): string {
+  const requestedDimensions = parseImageRequestSize(requestedSize);
+  const requested = requestedDimensions
+    ? `${formatImageAspectRatio(requestedDimensions.width, requestedDimensions.height)}（${requestedDimensions.width} × ${requestedDimensions.height}）`
+    : "自动比例";
+  if (!actualWidth || !actualHeight) {
+    return `请求 ${requested}，但无法验证模型返回图片的实际尺寸。`;
+  }
+  return `请求 ${requested}，模型实际返回 ${formatImageAspectRatio(actualWidth, actualHeight)}（${actualWidth} × ${actualHeight}）。`;
+}
 
-  return isPositiveDimension(width) && isPositiveDimension(height)
-    ? { width, height }
-    : null;
+export function imageActualDimensionLabel(
+  requestedSize: ImageRequestSize,
+  status: ImageAspectStatus | undefined,
+  actualWidth?: number,
+  actualHeight?: number,
+): string | undefined {
+  if (status !== "matched" || !actualWidth || !actualHeight) {
+    return undefined;
+  }
+
+  const requested = parseImageRequestSize(requestedSize);
+  if (
+    !requested ||
+    (actualWidth === requested.width && actualHeight === requested.height)
+  ) {
+    return undefined;
+  }
+
+  return `实际 ${actualWidth} × ${actualHeight}`;
 }
 
 function readImageDimensions(dataUrl: string): Promise<ImageDimensions> {
@@ -111,6 +134,15 @@ function greatestCommonDivisor(left: number, right: number): number {
   }
 
   return dividend || 1;
+}
+
+function hasMatchingAspectRatio(
+  requested: ImageDimensions,
+  actual: ImageDimensions,
+): boolean {
+  const requestedRatio = requested.width / requested.height;
+  const actualRatio = actual.width / actual.height;
+  return Math.abs(actualRatio / requestedRatio - 1) <= IMAGE_ASPECT_RATIO_TOLERANCE;
 }
 
 function isPositiveDimension(value: number): boolean {

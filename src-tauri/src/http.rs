@@ -13,9 +13,9 @@ use serde_json::json;
 use url::Url;
 
 use crate::types::{
-    CommandError, ConversationRequest, ConversationResponse, ImageAttachment, ImageRequest,
-    ImageResponse, ModelListRequest, ModelListResponse, PromptOptimizationRequest,
-    PromptOptimizationResponse,
+    CommandError, ConversationRequest, ConversationResponse, ImageAttachment,
+    ImagePromptPlanningRequest, ImageRequest, ImageResponse, ModelListRequest, ModelListResponse,
+    PromptOptimizationRequest, PromptOptimizationResponse,
 };
 
 const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
@@ -90,6 +90,7 @@ pub async fn generate(request: &ImageRequest) -> Result<ImageResponse, CommandEr
             "prompt": &request.prompt,
             "size": &request.size,
             "quality": &request.quality,
+            "output_format": &request.output_format,
         }))
         .send()
         .await
@@ -106,7 +107,8 @@ pub async fn edit(request: &ImageRequest) -> Result<ImageResponse, CommandError>
         .text("model", request.model.clone())
         .text("prompt", request.prompt.clone())
         .text("size", request.size.clone())
-        .text("quality", request.quality.clone());
+        .text("quality", request.quality.clone())
+        .text("output_format", request.output_format.clone());
 
     for (attachment, validated) in request.attachments.iter().zip(attachments) {
         let part = Part::bytes(validated.bytes)
@@ -206,6 +208,12 @@ pub async fn plan_storyboard(
         .filter(|content| !content.trim().is_empty())
         .ok_or_else(|| CommandError::new("对话 AI 未返回分镜内容。", "MISSING_CONVERSATION_RESULT"))?;
     Ok(ConversationResponse { content })
+}
+
+pub async fn plan_image_prompts(
+    request: &ImagePromptPlanningRequest,
+) -> Result<ConversationResponse, CommandError> {
+    crate::planning::plan_image_prompts(request).await
 }
 
 pub async fn optimize_prompt(
@@ -376,16 +384,43 @@ fn validate_common_request(request: &ImageRequest) -> Result<(), CommandError> {
     if request.prompt.trim().is_empty() || request.prompt.chars().count() > 20_000 {
         return Err(CommandError::new("提示词无效或超过 20,000 个字符。", "INVALID_PROMPT"));
     }
-    if !matches!(request.quality.as_str(), "low" | "medium" | "high") {
+    if !matches!(
+        request.quality.as_str(),
+        "auto" | "low" | "medium" | "high"
+    ) {
         return Err(CommandError::new("图片质量选项无效。", "INVALID_QUALITY"));
     }
-    if !matches!(
-        request.size.as_str(),
-        "1536x864" | "864x1536" | "1024x1024" | "1536x1024" | "1024x1536"
-    ) {
+    if !is_valid_image_size(&request.size) {
         return Err(CommandError::new("图片尺寸选项无效。", "INVALID_SIZE"));
     }
+    if request.output_format != "png" {
+        return Err(CommandError::new(
+            "图片输出格式必须为 PNG。",
+            "INVALID_OUTPUT_FORMAT",
+        ));
+    }
     Ok(())
+}
+
+fn is_valid_image_size(size: &str) -> bool {
+    if size == "auto" {
+        return true;
+    }
+    let Some((width, height)) = size.split_once('x') else {
+        return false;
+    };
+    let (Ok(width), Ok(height)) = (width.parse::<u64>(), height.parse::<u64>()) else {
+        return false;
+    };
+    if width == 0 || height == 0 || width % 16 != 0 || height % 16 != 0 {
+        return false;
+    }
+    let longest = width.max(height);
+    let shortest = width.min(height);
+    let pixels = width.saturating_mul(height);
+    longest <= 3_840
+        && longest <= shortest.saturating_mul(3)
+        && (655_360..=8_294_400).contains(&pixels)
 }
 
 fn validate_attachments(
@@ -563,7 +598,7 @@ async fn download_remote_image(value: &str, endpoint: &Url) -> Result<(Vec<u8>, 
     Ok((bytes, detected.to_owned()))
 }
 
-async fn read_limited(
+pub(crate) async fn read_limited(
     response: Response,
     limit: usize,
     code: &str,
@@ -586,7 +621,7 @@ async fn read_limited(
     Ok(bytes)
 }
 
-fn authenticated_client() -> Result<Client, CommandError> {
+pub(crate) fn authenticated_client() -> Result<Client, CommandError> {
     Client::builder()
         .redirect(Policy::none())
         .timeout(Duration::from_secs(300))
@@ -610,7 +645,7 @@ fn remote_image_client() -> Result<Client, CommandError> {
         .map_err(|_| CommandError::new("无法初始化图片下载客户端。", "HTTP_CLIENT_ERROR"))
 }
 
-fn build_endpoint(base_url: &str, route: &str) -> Result<Url, CommandError> {
+pub(crate) fn build_endpoint(base_url: &str, route: &str) -> Result<Url, CommandError> {
     let mut url = Url::parse(base_url.trim()).map_err(|_| {
         CommandError::new("请输入有效的 API 基础地址。", "INVALID_BASE_URL")
     })?;
@@ -730,14 +765,14 @@ fn validate_advertised_mime(value: Option<&str>, detected: &str) -> Result<(), C
     Ok(())
 }
 
-fn network_error(endpoint: &Url) -> CommandError {
+pub(crate) fn network_error(endpoint: &Url) -> CommandError {
     CommandError::new(
         format!("桌面端无法直接连接 {}，请检查网络、HTTPS 与 Endpoint 配置。", endpoint.host_str().unwrap_or("目标 API")),
         "NETWORK_ERROR",
     )
 }
 
-fn redact_secret(message: &str, secret: &str) -> String {
+pub(crate) fn redact_secret(message: &str, secret: &str) -> String {
     let redacted = if secret.is_empty() {
         message.to_owned()
     } else {

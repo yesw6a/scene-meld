@@ -20,6 +20,7 @@ interface DesktopRequest {
   prompt: string;
   size: string;
   quality: string;
+  outputFormat: "png";
 }
 
 interface DesktopCommandError {
@@ -70,6 +71,7 @@ function createRequest(
     prompt,
     size: settings.size,
     quality: settings.quality,
+    outputFormat: "png",
   };
 }
 

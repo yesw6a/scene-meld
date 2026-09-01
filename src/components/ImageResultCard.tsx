@@ -1,7 +1,7 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import * as stylex from "@stylexjs/stylex";
 import { Image, Spin } from "antd";
-import { AlertCircle } from "lucide-react";
+import { AlertCircle, AlertTriangle } from "lucide-react";
 
 import {
   imagePreviewSizing,
@@ -12,6 +12,11 @@ import {
   generatedImageFileName,
   type ImageActionSource,
 } from "../lib/image-actions";
+import {
+  imageActualDimensionLabel,
+  imageDimensionMismatchMessage,
+} from "../lib/image-aspect";
+import { qualityLabel } from "../lib/generation-plan";
 import { loadGeneratedImage } from "../lib/studio-db";
 import type { AssistantMessage } from "../types";
 import { colors, motion, radii, shadows } from "../styles/tokens.stylex";
@@ -38,6 +43,12 @@ export default function ImageResultCard({
   const [loadFailed, setLoadFailed] = useState(false);
   const [previewSizing, setPreviewSizing] = useState(() =>
     imagePreviewSizing(message.request.size),
+  );
+  const actualDimensionLabel = imageActualDimensionLabel(
+    message.request.size,
+    message.aspectStatus,
+    message.actualWidth,
+    message.actualHeight,
   );
 
   useEffect(() => {
@@ -165,12 +176,30 @@ export default function ImageResultCard({
         </div>
       )}
 
+      {isBatchPresentation && actualDimensionLabel ? (
+        <div {...stylex.props(styles.batchOutputMeta)}>{actualDimensionLabel}</div>
+      ) : null}
+
+      {!isBatchPresentation && message.aspectStatus === "mismatched" ? (
+        <div {...stylex.props(styles.aspectWarning)} role="status">
+          <AlertTriangle size={16} aria-hidden="true" />
+          <span>
+            {imageDimensionMismatchMessage(
+              message.request.size,
+              message.actualWidth,
+              message.actualHeight,
+            )} 已保留这张图片；如需再试，请点击“按原设置重试此张”，这会发起一次新的生成请求。
+          </span>
+        </div>
+      ) : null}
+
       {!isBatchPresentation ? (
         <div {...stylex.props(styles.meta)}>
           <div {...stylex.props(styles.chips)}>
             <span>{message.request.model}</span>
             <span>{imageSizeLabel(message.request.size)}</span>
             <span>{qualityLabel(message.request.quality)}</span>
+            {actualDimensionLabel ? <span>{actualDimensionLabel}</span> : null}
           </div>
 
           {message.revisedPrompt ? (
@@ -183,10 +212,6 @@ export default function ImageResultCard({
       ) : null}
     </Container>
   );
-}
-
-function qualityLabel(quality: AssistantMessage["request"]["quality"]): string {
-  return { low: "低质量", medium: "中质量", high: "高质量" }[quality];
 }
 
 function previewSizingStyle(sizing: ReturnType<typeof imagePreviewSizing>): CSSProperties {
@@ -276,12 +301,34 @@ const styles = stylex.create({
     gap: "14px",
     paddingTop: "14px",
   },
+  aspectWarning: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: "8px",
+    marginTop: "12px",
+    padding: "10px 12px",
+    color: colors.warning,
+    fontSize: "13px",
+    lineHeight: 1.5,
+    backgroundColor: colors.warningSoft,
+    borderWidth: "1px",
+    borderStyle: "solid",
+    borderColor: colors.warning,
+    borderRadius: radii.medium,
+  },
   chips: {
     display: "flex",
     flexWrap: "wrap",
     gap: "7px",
     color: colors.muted,
     fontSize: "12px",
+  },
+  batchOutputMeta: {
+    paddingTop: "6px",
+    color: colors.subtle,
+    fontSize: "11px",
+    lineHeight: 1.4,
+    fontVariantNumeric: "tabular-nums",
   },
   details: {
     color: colors.body,

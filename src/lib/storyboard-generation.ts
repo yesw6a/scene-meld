@@ -1,5 +1,8 @@
 import { requestEditedImage, requestGeneratedImage } from "./api";
-import { appendImageCanvasConstraint } from "./image-aspect";
+import {
+  appendImageCanvasConstraint,
+  inspectGeneratedImageAspect,
+} from "./image-aspect";
 import { prepareImageAttachments, type PreparedImageAttachments } from "./image-attachments";
 import { base64ToBlob, saveGeneratedImage } from "./studio-db";
 import { createId } from "./conversations";
@@ -88,6 +91,10 @@ export async function runStoryboardGeneration(
         ? await requestEditedImage(options.requestSettings, prompt, continuityAttachments, options.signal)
         : await requestGeneratedImage(options.requestSettings, prompt, options.signal);
       const imageDataUrl = `data:${response.mimeType};base64,${response.image}`;
+      const inspection = await inspectGeneratedImageAspect(
+        imageDataUrl,
+        options.requestSettings.size,
+      );
       let imageStored = false;
       if (canPersist) {
         try {
@@ -104,6 +111,10 @@ export async function runStoryboardGeneration(
         mimeType: response.mimeType,
         revisedPrompt: response.revisedPrompt,
         source: response.source,
+        aspectStatus: inspection.status,
+        ...(inspection.width && inspection.height
+          ? { actualWidth: inspection.width, actualHeight: inspection.height }
+          : {}),
       });
       previousDescription = shot.description;
       previousAttachment = {

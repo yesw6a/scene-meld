@@ -436,11 +436,14 @@ function AssistantMessageActions({
 }) {
   const loading = message.status === "loading";
   const imageReady = message.status === "success";
+  const regenerateLabel = message.aspectStatus === "mismatched"
+    ? "按原设置重试此张"
+    : "重新生成";
 
   return (
     <Actions
       variant="borderless"
-      aria-label={variant === "batch" ? "批量结果单图操作" : "生成结果操作"}
+      aria-label={variant === "batch" ? "多图结果单图操作" : "生成结果操作"}
       classNames={{ item: stylex.props(styles.actionItem).className ?? "" }}
       items={[
         {
@@ -465,13 +468,13 @@ function AssistantMessageActions({
         },
         {
           key: "regenerate",
-          label: "重新生成",
+          label: regenerateLabel,
           icon: <RefreshCw size={15} />,
           onItemClick:
             !busy && !loading ? () => onRegenerate(message, source) : undefined,
           actionRender:
             !busy && !loading ? undefined : (
-              <ActionButton icon={<RefreshCw size={15} />} label="重新生成" disabled />
+              <ActionButton icon={<RefreshCw size={15} />} label={regenerateLabel} disabled />
             ),
         },
         ...(variant === "batch"

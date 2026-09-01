@@ -4,12 +4,23 @@ export const MAX_IMAGE_BATCH_SIZE = 9;
 export const DEFAULT_IMAGE_QUANTITY = 1;
 export const IMAGE_BATCH_CONCURRENCY = 3;
 
-export type ImageQuality = "low" | "medium" | "high";
-export type ImageSize = "1536x864" | "864x1536" | "1024x1024";
-export type ImageRequestSize = ImageSize | "1536x1024" | "1024x1536";
-export type ImageOrientation = "landscape" | "portrait" | "square";
+export type ImageQuality = "auto" | "low" | "medium" | "high";
+export type ImageSize =
+  | "auto"
+  | "1536x864"
+  | "864x1536"
+  | "1536x1024"
+  | "1024x1536"
+  | "1024x1024";
+export type ImageRequestSize = "auto" | `${number}x${number}`;
+export type ImageOrientation = "auto" | "landscape" | "portrait" | "square";
 export type ConnectionStatus = "incomplete" | "ready" | "requesting" | "success" | "error";
-export type GenerationMode = "direct" | "variations" | "storyboard";
+export type GenerationMode = "single" | "batch" | "storyboard";
+
+export type GenerationPlan =
+  | { mode: "single"; count: 1 }
+  | { mode: "batch"; count: number }
+  | { mode: "storyboard"; shotCount: number | "auto" };
 
 export type PromptDirectiveKey = "mode" | "size" | "quality" | "quantity";
 
@@ -18,11 +29,20 @@ export interface PromptDirective {
   label: string;
 }
 
+export interface PromptSettingsPatch {
+  mode?: GenerationMode;
+  size?: ImageRequestSize;
+  quality?: ImageQuality;
+  quantity?: number;
+  storyboardQuantity?: number | "auto";
+}
+
 export interface PromptDirectiveResult {
   cleanPrompt: string;
-  settingsPatch: Partial<Pick<GenerationSettings, "mode" | "size" | "quality" | "quantity" | "storyboardQuantity">>;
+  settingsPatch: PromptSettingsPatch;
   directives: PromptDirective[];
   errors: string[];
+  errorsByKey: Partial<Record<PromptDirectiveKey, string>>;
 }
 
 export type PromptOptimizationRiskLevel = "none" | "review" | "blocked";
@@ -35,8 +55,18 @@ export interface PromptOptimizationResult {
   safetyFindings?: string[];
 }
 
+export interface ImagePromptPlan {
+  prompts: string[];
+}
+
+export interface ConversationPlanningScopes {
+  single: boolean;
+  batch: boolean;
+  storyboard: boolean;
+}
+
 export interface ConversationSettings {
-  enabled: boolean;
+  planningScopes: ConversationPlanningScopes;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -105,7 +135,7 @@ export interface UserMessage {
 }
 
 export type AssistantStatus = "loading" | "success" | "error" | "aborted";
-export type ImageAspectStatus = "matched" | "mismatched" | "unverified" | "retrying";
+export type ImageAspectStatus = "matched" | "mismatched" | "unverified";
 
 export interface AssistantMessage {
   id: string;
@@ -120,7 +150,6 @@ export interface AssistantMessage {
   actualWidth?: number;
   actualHeight?: number;
   aspectStatus?: ImageAspectStatus;
-  aspectRetried?: boolean;
   imageId?: string;
   imageDataUrl?: string;
   mimeType?: string;
