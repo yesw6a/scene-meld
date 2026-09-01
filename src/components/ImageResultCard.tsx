@@ -30,6 +30,11 @@ interface ImageResultCardProps {
   variant?: "default" | "batch";
 }
 
+interface ResolvedImage {
+  url: string;
+  blob?: Blob;
+}
+
 export default function ImageResultCard({
   message,
   onCopyImage,
@@ -39,7 +44,10 @@ export default function ImageResultCard({
 }: ImageResultCardProps) {
   const isBatchPresentation = variant === "batch";
   const Container = isBatchPresentation ? "div" : "article";
-  const [imageUrl, setImageUrl] = useState<string | null>(message.imageDataUrl ?? null);
+  const [resolvedImage, setResolvedImage] = useState<ResolvedImage | null>(() =>
+    message.imageDataUrl ? { url: message.imageDataUrl } : null,
+  );
+  const imageUrl = resolvedImage?.url ?? null;
   const [loadFailed, setLoadFailed] = useState(false);
   const [previewSizing, setPreviewSizing] = useState(() =>
     imagePreviewSizing(message.request.size),
@@ -53,20 +61,20 @@ export default function ImageResultCard({
 
   useEffect(() => {
     if (message.imageDataUrl) {
-      setImageUrl(message.imageDataUrl);
+      setResolvedImage({ url: message.imageDataUrl });
       setLoadFailed(false);
       return;
     }
 
     if (!message.imageId) {
-      setImageUrl(null);
+      setResolvedImage(null);
       setLoadFailed(true);
       return;
     }
 
     let active = true;
     let objectUrl: string | undefined;
-    setImageUrl(null);
+    setResolvedImage(null);
     setLoadFailed(false);
 
     void loadGeneratedImage(message.imageId)
@@ -77,7 +85,7 @@ export default function ImageResultCard({
 
         objectUrl = URL.createObjectURL(blob);
         if (active) {
-          setImageUrl(objectUrl);
+          setResolvedImage({ url: objectUrl, blob });
         } else {
           URL.revokeObjectURL(objectUrl);
         }
@@ -97,16 +105,17 @@ export default function ImageResultCard({
   }, [message.imageDataUrl, message.imageId]);
 
   useEffect(() => {
-    if (!imageUrl) {
+    if (!resolvedImage) {
       return;
     }
 
     onImageSourceReady({
-      url: imageUrl,
+      url: resolvedImage.url,
       fileName: generatedImageFileName(message.createdAt, message.mimeType),
       mimeType: message.mimeType,
+      blob: resolvedImage.blob,
     });
-  }, [imageUrl, message.createdAt, message.mimeType, onImageSourceReady]);
+  }, [message.createdAt, message.mimeType, onImageSourceReady, resolvedImage]);
 
   return (
     <Container {...stylex.props(styles.card)} aria-label="生成的图片">
@@ -116,6 +125,7 @@ export default function ImageResultCard({
             url: imageUrl,
             fileName: generatedImageFileName(message.createdAt, message.mimeType),
             mimeType: message.mimeType,
+            blob: resolvedImage?.blob,
           }}
           onCopy={onCopyImage}
           onDownload={onDownloadImage}

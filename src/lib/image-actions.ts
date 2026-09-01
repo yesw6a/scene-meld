@@ -6,6 +6,7 @@ export interface ImageActionSource {
   url: string;
   fileName: string;
   mimeType?: string;
+  blob?: Blob;
 }
 
 export type ImageCopyErrorCode =
@@ -65,6 +66,21 @@ export function downloadImageBlob(
 }
 
 async function loadImageBlob(source: ImageActionSource): Promise<{ blob: Blob; mimeType: string }> {
+  if (source.blob) {
+    if (source.blob.size === 0) {
+      throw new ImageCopyError(
+        "source-unavailable",
+        "当前图片文件没有可读取的数据。",
+        "The resolved image blob is empty.",
+      );
+    }
+
+    return {
+      blob: source.blob,
+      mimeType: resolveImageMimeType(source.blob, source.mimeType),
+    };
+  }
+
   try {
     const response = await fetch(source.url);
     if (!response.ok) {

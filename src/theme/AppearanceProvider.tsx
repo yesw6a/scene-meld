@@ -39,7 +39,14 @@ const DARK_THEME_CLASS_NAMES =
   stylex.props(darkColorsTheme, darkShadowsTheme).className?.split(" ").filter(Boolean) ?? [];
 const desktopDrawerConfig = { styles: desktopDrawerOverlayStyles };
 const desktopModalConfig = { styles: desktopModalOverlayStyles };
-const desktopFeedbackConfig = { top: desktopChrome.feedbackTop };
+const feedbackOverlayStyles = {
+  list: { zIndex: desktopChrome.overlayCeiling },
+};
+const feedbackConfig = { styles: feedbackOverlayStyles };
+const desktopFeedbackConfig = {
+  ...feedbackConfig,
+  top: desktopChrome.feedbackTop,
+};
 
 export default function AppearanceProvider({ children }: { children: ReactNode }) {
   const desktop = isDesktopRuntime();
@@ -91,6 +98,7 @@ export default function AppearanceProvider({ children }: { children: ReactNode }
   );
   const themeConfig = useMemo(() => createThemeConfig(resolvedMode), [resolvedMode]);
   const darkMode = resolvedMode === "dark";
+  const mergedFeedbackConfig = desktop ? desktopFeedbackConfig : feedbackConfig;
 
   return (
     <AppearanceContext.Provider value={contextValue}>
@@ -108,8 +116,8 @@ export default function AppearanceProvider({ children }: { children: ReactNode }
           modal={desktop ? desktopModalConfig : undefined}
         >
           <AntdApp
-            message={desktop ? desktopFeedbackConfig : undefined}
-            notification={desktop ? desktopFeedbackConfig : undefined}
+            message={mergedFeedbackConfig}
+            notification={mergedFeedbackConfig}
           >
             {children}
           </AntdApp>

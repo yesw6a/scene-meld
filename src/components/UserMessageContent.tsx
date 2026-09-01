@@ -13,6 +13,7 @@ import ImageContextMenu from "./ImageContextMenu";
 interface ResolvedAttachment {
   attachment: MessageImageAttachment;
   url: string | null;
+  blob: Blob | null;
 }
 
 interface UserMessageContentProps {
@@ -29,7 +30,11 @@ export default function UserMessageContent({
   onImageSourceReady,
 }: UserMessageContentProps) {
   const [resolved, setResolved] = useState<ResolvedAttachment[]>(() =>
-    (message.attachments ?? []).map((attachment) => ({ attachment, url: null })),
+    (message.attachments ?? []).map((attachment) => ({
+      attachment,
+      url: null,
+      blob: null,
+    })),
   );
 
   useEffect(() => {
@@ -40,12 +45,12 @@ export default function UserMessageContent({
       (message.attachments ?? []).map(async (attachment) => {
         const blob = attachment.blob ?? (await loadGeneratedImage(attachment.id));
         if (!blob) {
-          return { attachment, url: null };
+          return { attachment, url: null, blob: null };
         }
 
         const url = URL.createObjectURL(blob);
         objectUrls.push(url);
-        return { attachment, url };
+        return { attachment, url, blob };
       }),
     ).then((items) => {
       if (active) {
@@ -66,8 +71,8 @@ export default function UserMessageContent({
   }, [message.attachments]);
 
   useEffect(() => {
-    for (const { attachment, url } of resolved) {
-      if (!url) {
+    for (const { attachment, url, blob } of resolved) {
+      if (!url || !blob) {
         continue;
       }
 
@@ -75,6 +80,7 @@ export default function UserMessageContent({
         url,
         fileName: attachment.name,
         mimeType: attachment.mimeType,
+        blob,
       });
     }
   }, [onImageSourceReady, resolved]);
@@ -83,7 +89,7 @@ export default function UserMessageContent({
     <div {...stylex.props(styles.content)}>
       {resolved.length > 0 ? (
         <div {...stylex.props(styles.attachments)} aria-label="参考图片">
-          {resolved.map(({ attachment, url }) => (
+          {resolved.map(({ attachment, url, blob }) => (
             <figure key={attachment.id} {...stylex.props(styles.attachment)}>
               {url ? (
                 <ImageContextMenu
@@ -91,6 +97,7 @@ export default function UserMessageContent({
                     url,
                     fileName: attachment.name,
                     mimeType: attachment.mimeType,
+                    blob: blob ?? undefined,
                   }}
                   onCopy={onCopyImage}
                   onDownload={onDownloadImage}

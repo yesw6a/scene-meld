@@ -24,6 +24,7 @@ export default function ImageCopyRecoveryDialog({
 }: ImageCopyRecoveryDialogProps) {
   const desktop = isDesktopRuntime();
   const guidance = error ? copyGuidance(error, desktop) : null;
+  const sourceUnavailable = error?.code === "source-unavailable";
 
   return (
     <Modal
@@ -38,10 +39,14 @@ export default function ImageCopyRecoveryDialog({
       styles={MODAL_STYLES}
       footer={
         <div {...stylex.props(styles.footer)}>
-          <Button className="studio-dialog-action" onClick={onClose}>稍后处理</Button>
-          <Button className="studio-dialog-action" icon={<Download size={16} />} onClick={() => void onDownload()}>
-            下载 PNG
+          <Button className="studio-dialog-action" onClick={onClose}>
+            {sourceUnavailable ? "知道了" : "稍后处理"}
           </Button>
+          {!sourceUnavailable ? (
+            <Button className="studio-dialog-action" icon={<Download size={16} />} onClick={() => void onDownload()}>
+              下载 PNG
+            </Button>
+          ) : null}
           <Button
             type="primary"
             className="studio-dialog-action"
@@ -76,7 +81,9 @@ export default function ImageCopyRecoveryDialog({
           ) : null}
 
           <Typography.Paragraph type="secondary" {...stylex.props(styles.fallback)}>
-            如果暂时无法解决，可以先下载 PNG；图片不会因为复制失败而被删除。
+            {sourceUnavailable
+              ? "应用需要重新取得原始图片数据才能复制或下载。现有预览可能来自缓存，不代表原始文件仍然可用。"
+              : "如果暂时无法解决，可以先下载 PNG；图片不会因为复制失败而被删除。"}
           </Typography.Paragraph>
 
           {error.technicalDetails ? (
@@ -139,8 +146,8 @@ function copyGuidance(
   if (error.code === "source-unavailable") {
     return {
       type: "error",
-      title: "当前图片文件无法读取",
-      description: "图片可能已被浏览器清理或临时链接已经失效。请重新打开这条结果；仍无法读取时需要重新生成。",
+      title: "应用暂时无法取得原始图片数据",
+      description: "请先点击“重试复制”。如果仍然失败，请关闭预览后重新打开这条结果；结果本身也显示不可用时，需要重新生成。",
     };
   }
   return {
