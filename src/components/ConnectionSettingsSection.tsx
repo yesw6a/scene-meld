@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import * as stylex from "@stylexjs/stylex";
-import { AutoComplete, Button, Form, Input, Radio, Switch, Typography } from "antd";
+import { AutoComplete, Button, Form, Input, Radio, Select, Switch, Typography } from "antd";
 import {
   CheckCircle2,
   Image as ImageIcon,
@@ -17,11 +17,26 @@ import {
   type ConversationPlanningScopes,
   type ConversationSettings,
   type GenerationSettings,
+  type ReasoningEffort,
 } from "../types";
 import { colors, motion, radii, shadows } from "../styles/tokens.stylex";
 import ConversationPlanningScopeSelector from "./ConversationPlanningScopeSelector";
 
 type ConnectionMode = "shared" | "separate";
+
+const REASONING_EFFORT_OPTIONS: Array<{ value: ReasoningEffort; label: string }> = [
+  { value: "auto", label: "自动（推荐）" },
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+];
+
+const REASONING_EFFORT_HELP: Record<ReasoningEffort, string> = {
+  auto: "使用模型或当前服务的默认设置，兼容性最好。",
+  low: "速度优先，适合简单提示词整理。",
+  medium: "质量与等待时间平衡，适合一般规划。",
+  high: "适合复杂分镜；通常等待更久、消耗更多，但不一定总能改善结果。",
+};
 
 interface ConnectionSettingsSectionProps {
   draft: GenerationSettings;
@@ -511,6 +526,18 @@ function ConversationCapabilityFields({
           </Button>
         </div>
       </Form.Item>
+      <Form.Item
+        label="推理程度"
+        help={`${REASONING_EFFORT_HELP[draft.conversation.reasoningEffort]} 只影响 AI 规划和提示词优化，不改变图片生成质量。`}
+      >
+        <Select
+          value={draft.conversation.reasoningEffort}
+          options={REASONING_EFFORT_OPTIONS}
+          aria-label="推理程度"
+          onChange={(value) => onUpdate("reasoningEffort", value)}
+          {...stylex.props(styles.reasoningSelect)}
+        />
+      </Form.Item>
       <label {...stylex.props(styles.switchRow)}>
         <span {...stylex.props(styles.switchCopy)}>
           <strong>结构化 JSON 输出</strong>
@@ -627,6 +654,7 @@ const styles = stylex.create({
   modelPickerRow: { minWidth: 0, display: "flex", alignItems: "stretch", gap: "8px" },
   modelAutocomplete: { minWidth: 0, flex: 1 },
   modelDiscoveryButton: { flexShrink: 0, minHeight: "40px" },
+  reasoningSelect: { width: "100%" },
   switchRow: { minHeight: "52px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px", cursor: "pointer", color: colors.ink },
   switchCopy: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: "3px" },
 });

@@ -38,6 +38,8 @@ pub struct ConversationRequest {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
     pub source_prompt: String,
     pub shot_count: usize,
     pub supports_structured_output: bool,
@@ -58,6 +60,8 @@ pub struct ImagePromptPlanningRequest {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
     pub source_prompt: String,
     pub prompt_count: usize,
     pub supports_structured_output: bool,
@@ -72,6 +76,8 @@ pub struct PromptOptimizationRequest {
     pub base_url: String,
     pub api_key: String,
     pub model: String,
+    #[serde(default)]
+    pub reasoning_effort: Option<String>,
     pub prompt: String,
     #[serde(default)]
     pub rewrite_mode: Option<String>,

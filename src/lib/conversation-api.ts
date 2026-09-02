@@ -1,9 +1,11 @@
 import type {
   ConversationSettings,
   ImageAttachmentSource,
+  PlanningProgressEvent,
   StoryboardPlan,
 } from "../types";
 import { normalizeImageApiBaseUrl } from "./image-endpoint";
+import { requestPlanningContent } from "./planning-stream";
 
 export async function planStoryboard(
   settings: ConversationSettings,
@@ -11,6 +13,7 @@ export async function planStoryboard(
   shotCount: number | "auto",
   attachments: ImageAttachmentSource[],
   signal: AbortSignal,
+  onProgress?: (event: PlanningProgressEvent) => void,
 ): Promise<StoryboardPlan> {
   const requestedCount = shotCount === "auto" ? 6 : shotCount;
   if (!settings.planningScopes.storyboard || !settings.baseUrl || !settings.apiKey) {
@@ -31,8 +34,8 @@ export async function planStoryboard(
   let text: string;
   try {
     text = "__TAURI_INTERNALS__" in window
-      ? await requestStoryboardInDesktop(settings, sourcePrompt, requestedCount, content, signal)
-      : await requestStoryboardInBrowser(settings, content, signal);
+      ? await requestStoryboardInDesktop(settings, sourcePrompt, requestedCount, content, signal, onProgress)
+      : await requestStoryboardInBrowser(settings, content, signal, onProgress);
   } catch (error) {
     if (!content.some((part) => part.type === "image_url") || !isUnsupportedVisionError(error)) {
       throw error;
@@ -40,15 +43,18 @@ export async function planStoryboard(
     const textOnly = content.filter((part) => part.type !== "image_url");
     try {
       text = "__TAURI_INTERNALS__" in window
-        ? await requestStoryboardInDesktop(settings, sourcePrompt, requestedCount, textOnly, signal)
-        : await requestStoryboardInBrowser(settings, textOnly, signal);
+        ? await requestStoryboardInDesktop(settings, sourcePrompt, requestedCount, textOnly, signal, onProgress)
+        : await requestStoryboardInBrowser(settings, textOnly, signal, onProgress);
     } catch (retryError) {
       const detail = retryError instanceof Error ? retryError.message : "请检查对话模型是否支持文本输入。";
       throw new Error(`上游不支持参考图，已自动改为纯文本重试，但仍然失败：${detail}`);
     }
   }
+  onProgress?.({ type: "validating", requestId: "storyboard" });
   const parsed = parseJsonObject(text);
-  return normalizeStoryboardPlan(parsed, sourcePrompt, requestedCount);
+  const plan = normalizeStoryboardPlan(parsed, sourcePrompt, requestedCount);
+  onProgress?.({ type: "completed", requestId: "storyboard" });
+  return plan;
 }
 
 function isUnsupportedVisionError(error: unknown): boolean {
@@ -61,16 +67,21 @@ async function requestStoryboardInBrowser(
   settings: ConversationSettings,
   content: Array<Record<string, unknown>>,
   signal: AbortSignal,
+  onProgress?: (event: PlanningProgressEvent) => void,
 ): Promise<string> {
   const baseUrl = normalizeImageApiBaseUrl(settings.baseUrl);
   const endpoint = new URL("chat/completions", `${baseUrl}/`).toString();
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${settings.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const requestId = crypto.randomUUID();
+  return requestPlanningContent({
+    endpoint,
+    apiKey: settings.apiKey,
+    model: settings.model,
+    reasoningEffort: settings.reasoningEffort,
+    requestId,
+    signal,
+    onProgress,
+    operation: "对话 AI 规划",
+    body: {
       model: settings.model,
       temperature: 0.4,
       messages: [
@@ -84,30 +95,8 @@ async function requestStoryboardInBrowser(
       ...(settings.supportsStructuredOutput
         ? { response_format: { type: "json_object" } }
         : {}),
-    }),
-    signal,
+    },
   });
-  if (!response.ok) {
-    let detail = "";
-    try {
-      const payload = (await response.json()) as { error?: { message?: unknown } };
-      detail = typeof payload.error?.message === "string" ? payload.error.message : "";
-    } catch {
-      // Keep the status-only error when the upstream does not return JSON.
-    }
-    throw new Error(detail || `对话 AI 规划失败（HTTP ${response.status}）。`);
-  }
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: unknown } }>;
-  };
-  const contentValue = payload.choices?.[0]?.message?.content;
-  return typeof contentValue === "string"
-    ? contentValue
-    : Array.isArray(contentValue)
-      ? contentValue
-          .map((part) => (part && typeof part === "object" && "text" in part ? String((part as { text?: unknown }).text ?? "") : ""))
-          .join("\n")
-      : JSON.stringify(contentValue ?? "");
 }
 
 async function requestStoryboardInDesktop(
@@ -116,9 +105,11 @@ async function requestStoryboardInDesktop(
   shotCount: number,
   content: Array<Record<string, unknown>>,
   signal: AbortSignal,
+  onProgress?: (event: PlanningProgressEvent) => void,
 ): Promise<string> {
   const requestId = crypto.randomUUID();
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { Channel, invoke } = await import("@tauri-apps/api/core");
+  const onEvent = new Channel<PlanningProgressEvent>((event) => onProgress?.(event));
   const cancel = () => {
     void invoke("cancel_image_request", { requestId }).catch(() => undefined);
   };
@@ -126,11 +117,13 @@ async function requestStoryboardInDesktop(
   try {
     if (signal.aborted) throw abortError();
     const response = await invoke<{ content: string }>("plan_storyboard", {
+      onEvent,
       request: {
         requestId,
         baseUrl: settings.baseUrl,
         apiKey: settings.apiKey,
         model: settings.model,
+        reasoningEffort: settings.reasoningEffort,
         sourcePrompt,
         shotCount,
         supportsStructuredOutput: settings.supportsStructuredOutput,

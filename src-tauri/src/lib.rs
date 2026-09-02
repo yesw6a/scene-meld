@@ -1,12 +1,15 @@
 mod http;
 mod files;
 mod planning;
+mod planning_stream;
+mod reasoning;
 mod request_state;
 mod secrets;
 mod types;
 
+use planning_stream::PlanningProgressEvent;
 use request_state::RequestState;
-use tauri::State;
+use tauri::{ipc::Channel, State};
 use types::{
     CommandError, ConversationRequest, ConversationResponse, ImagePromptPlanningRequest,
     ImageRequest, ImageResponse, ModelListRequest, ModelListResponse, PromptOptimizationRequest,
@@ -32,11 +35,12 @@ async fn edit_image(
 #[tauri::command]
 async fn plan_storyboard(
     request: ConversationRequest,
+    on_event: Channel<PlanningProgressEvent>,
     state: State<'_, RequestState>,
 ) -> Result<ConversationResponse, CommandError> {
     let mut cancelled = state.begin(&request.request_id)?;
     let result = tokio::select! {
-        response = http::plan_storyboard(&request) => response,
+        response = http::plan_storyboard(&request, &on_event) => response,
         _ = &mut cancelled => Err(CommandError::cancelled()),
     };
     state.finish(&request.request_id)?;
@@ -46,11 +50,12 @@ async fn plan_storyboard(
 #[tauri::command]
 async fn plan_image_prompts(
     request: ImagePromptPlanningRequest,
+    on_event: Channel<PlanningProgressEvent>,
     state: State<'_, RequestState>,
 ) -> Result<ConversationResponse, CommandError> {
     let mut cancelled = state.begin(&request.request_id)?;
     let result = tokio::select! {
-        response = http::plan_image_prompts(&request) => response,
+        response = http::plan_image_prompts(&request, &on_event) => response,
         _ = &mut cancelled => Err(CommandError::cancelled()),
     };
     state.finish(&request.request_id)?;

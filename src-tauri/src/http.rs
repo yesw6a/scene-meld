@@ -6,16 +6,24 @@ use reqwest::{
     header::CONTENT_TYPE,
     multipart::{Form, Part},
     redirect::Policy,
-    Client, Response,
+    Client, Response, StatusCode,
 };
 use serde::Deserialize;
 use serde_json::json;
+use tauri::ipc::Channel;
 use url::Url;
 
-use crate::types::{
-    CommandError, ConversationRequest, ConversationResponse, ImageAttachment,
-    ImagePromptPlanningRequest, ImageRequest, ImageResponse, ModelListRequest, ModelListResponse,
-    PromptOptimizationRequest, PromptOptimizationResponse,
+use crate::{
+    planning_stream::{request_content, PlanningProgressEvent, PlanningRequest},
+    reasoning::{
+        classify_unsupported_reasoning, merge_notice, prepare_reasoning_request,
+        reasoning_fallback_notice, remember_unsupported_reasoning, upstream_error_detail,
+    },
+    types::{
+        CommandError, ConversationRequest, ConversationResponse, ImageAttachment,
+        ImagePromptPlanningRequest, ImageRequest, ImageResponse, ModelListRequest,
+        ModelListResponse, PromptOptimizationRequest, PromptOptimizationResponse,
+    },
 };
 
 const MAX_IMAGE_BYTES: usize = 25 * 1024 * 1024;
@@ -50,7 +58,6 @@ struct UpstreamError {
 #[derive(Deserialize)]
 struct ConversationPayload {
     choices: Option<Vec<ConversationChoice>>,
-    error: Option<UpstreamError>,
 }
 
 #[derive(Deserialize)]
@@ -134,6 +141,7 @@ pub async fn edit(request: &ImageRequest) -> Result<ImageResponse, CommandError>
 
 pub async fn plan_storyboard(
     request: &ConversationRequest,
+    on_event: &Channel<PlanningProgressEvent>,
 ) -> Result<ConversationResponse, CommandError> {
     if request.api_key.trim().is_empty() || request.api_key.len() > 16_384 {
         return Err(CommandError::new("API Key 无效。", "INVALID_API_KEY"));
@@ -181,39 +189,27 @@ pub async fn plan_storyboard(
         body["response_format"] = json!({ "type": "json_object" });
     }
     let client = authenticated_client()?;
-    let response = client
-        .post(endpoint.clone())
-        .bearer_auth(&request.api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| network_error(&endpoint))?;
-    let status = response.status();
-    let bytes = read_limited(response, 2 * 1024 * 1024, "RESPONSE_TOO_LARGE").await?;
-    let payload = serde_json::from_slice::<ConversationPayload>(&bytes).ok();
-    if !status.is_success() {
-        let message = payload
-            .as_ref()
-            .and_then(|value| value.error.as_ref())
-            .and_then(|error| error.message.as_deref())
-            .map(|value| redact_secret(value, &request.api_key))
-            .unwrap_or_else(|| format!("对话 AI 规划失败（HTTP {}）。", status.as_u16()));
-        return Err(CommandError::with_status(message, "CONVERSATION_UPSTREAM_ERROR", status.as_u16()));
-    }
-    let content = payload
-        .and_then(|value| value.choices)
-        .and_then(|mut choices| choices.drain(..).next())
-        .and_then(|choice| choice.message)
-        .and_then(|message| message.content)
-        .filter(|content| !content.trim().is_empty())
-        .ok_or_else(|| CommandError::new("对话 AI 未返回分镜内容。", "MISSING_CONVERSATION_RESULT"))?;
+    let content = request_content(PlanningRequest {
+        client: &client,
+        endpoint: endpoint.as_str(),
+        api_key: &request.api_key,
+        model: &request.model,
+        reasoning_effort: request.reasoning_effort.as_deref(),
+        request_id: &request.request_id,
+        body: &body,
+        operation: "对话 AI 规划",
+        error_code: "CONVERSATION_UPSTREAM_ERROR",
+        on_event,
+    })
+    .await?;
     Ok(ConversationResponse { content })
 }
 
 pub async fn plan_image_prompts(
     request: &ImagePromptPlanningRequest,
+    on_event: &Channel<PlanningProgressEvent>,
 ) -> Result<ConversationResponse, CommandError> {
-    crate::planning::plan_image_prompts(request).await
+    crate::planning::plan_image_prompts(request, on_event).await
 }
 
 pub async fn optimize_prompt(
@@ -267,25 +263,48 @@ pub async fn optimize_prompt(
     if request.supports_structured_output {
         body["response_format"] = json!({ "type": "json_object" });
     }
+    let reasoning_attempt = prepare_reasoning_request(
+        &body,
+        endpoint.as_str(),
+        &request.model,
+        request.reasoning_effort.as_deref(),
+    )?;
     let client = authenticated_client()?;
-    let response = client
-        .post(endpoint.clone())
-        .bearer_auth(&request.api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| network_error(&endpoint))?;
-    let status = response.status();
-    let bytes = read_limited(response, 2 * 1024 * 1024, "RESPONSE_TOO_LARGE").await?;
+    let (mut status, mut bytes) = send_prompt_optimization_request(
+        &client,
+        &endpoint,
+        &request.api_key,
+        &reasoning_attempt.body,
+    )
+    .await?;
+    let mut fallback_notice = reasoning_attempt.fallback_notice;
+    if !status.is_success() {
+        if let Some(effort) = reasoning_attempt.applied_effort.as_deref() {
+            let detail = upstream_error_detail(&bytes, &request.api_key);
+            if let Some(scope) =
+                classify_unsupported_reasoning(Some(status.as_u16()), &detail, effort)
+            {
+                remember_unsupported_reasoning(endpoint.as_str(), &request.model, effort, scope);
+                fallback_notice = Some(reasoning_fallback_notice(effort));
+                (status, bytes) =
+                    send_prompt_optimization_request(&client, &endpoint, &request.api_key, &body)
+                        .await?;
+            }
+        }
+    }
     let payload = serde_json::from_slice::<ConversationPayload>(&bytes).ok();
     if !status.is_success() {
-        let message = payload
-            .as_ref()
-            .and_then(|value| value.error.as_ref())
-            .and_then(|error| error.message.as_deref())
-            .map(|value| redact_secret(value, &request.api_key))
-            .unwrap_or_else(|| format!("提示词优化失败（HTTP {}）。", status.as_u16()));
-        return Err(CommandError::with_status(message, "PROMPT_OPTIMIZATION_UPSTREAM_ERROR", status.as_u16()));
+        let detail = upstream_error_detail(&bytes, &request.api_key);
+        let message = if detail.is_empty() {
+            format!("提示词优化失败（HTTP {}）。", status.as_u16())
+        } else {
+            detail
+        };
+        return Err(CommandError::with_status(
+            message,
+            "PROMPT_OPTIMIZATION_UPSTREAM_ERROR",
+            status.as_u16(),
+        ));
     }
     let content = payload
         .and_then(|value| value.choices)
@@ -294,7 +313,29 @@ pub async fn optimize_prompt(
         .and_then(|message| message.content)
         .filter(|content| !content.trim().is_empty())
         .ok_or_else(|| CommandError::new("对话 AI 未返回优化结果。", "MISSING_OPTIMIZATION_RESULT"))?;
-    parse_prompt_optimization(&content)
+    let mut result = parse_prompt_optimization(&content)?;
+    if let Some(notice) = fallback_notice {
+        result.notice = merge_notice(result.notice, notice);
+    }
+    Ok(result)
+}
+
+async fn send_prompt_optimization_request(
+    client: &Client,
+    endpoint: &Url,
+    api_key: &str,
+    body: &serde_json::Value,
+) -> Result<(StatusCode, Vec<u8>), CommandError> {
+    let response = client
+        .post(endpoint.clone())
+        .bearer_auth(api_key)
+        .json(body)
+        .send()
+        .await
+        .map_err(|_| network_error(endpoint))?;
+    let status = response.status();
+    let bytes = read_limited(response, 2 * 1024 * 1024, "RESPONSE_TOO_LARGE").await?;
+    Ok((status, bytes))
 }
 
 fn parse_prompt_optimization(content: &str) -> Result<PromptOptimizationResponse, CommandError> {

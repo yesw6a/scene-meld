@@ -6,6 +6,7 @@ import type {
   AssistantMessage,
   ChatMessage,
   Conversation,
+  GeneratedImageVersion,
   MessageImageAttachment,
   UserMessage,
   WorkspaceSnapshot,
@@ -16,7 +17,10 @@ const DATABASE_NAME = "gpt-image-2-studio";
 const DATABASE_VERSION = 1;
 const ACTIVE_CONVERSATION_KEY = "active-conversation";
 
-type StoredAssistantMessage = Omit<AssistantMessage, "imageDataUrl">;
+type StoredGeneratedImageVersion = Omit<GeneratedImageVersion, "imageDataUrl">;
+type StoredAssistantMessage = Omit<AssistantMessage, "imageDataUrl" | "comparison"> & {
+  comparison?: { candidate: StoredGeneratedImageVersion };
+};
 type StoredMessageImageAttachment = Omit<MessageImageAttachment, "blob">;
 type StoredUserMessage = Omit<UserMessage, "attachments"> & {
   attachments?: StoredMessageImageAttachment[];
@@ -182,8 +186,16 @@ function toStoredConversation(conversation: Conversation): StoredConversation {
         };
       }
 
-      const { imageDataUrl: _imageDataUrl, ...storedMessage } = message;
-      return storedMessage;
+      const { imageDataUrl: _imageDataUrl, comparison, ...storedMessage } = message;
+      if (!comparison) {
+        return storedMessage;
+      }
+
+      const { imageDataUrl: _candidateDataUrl, ...storedCandidate } = comparison.candidate;
+      return {
+        ...storedMessage,
+        comparison: { candidate: storedCandidate },
+      };
     }),
   };
 }
@@ -230,8 +242,13 @@ function imageIdsFromMessages(messages: StoredChatMessage[]): Set<string> {
   const imageIds = new Set<string>();
 
   for (const message of messages) {
-    if (message.type === "assistant" && message.imageId) {
-      imageIds.add(message.imageId);
+    if (message.type === "assistant") {
+      if (message.imageId) {
+        imageIds.add(message.imageId);
+      }
+      if (message.comparison?.candidate.imageId) {
+        imageIds.add(message.comparison.candidate.imageId);
+      }
       continue;
     }
 

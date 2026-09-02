@@ -2,8 +2,10 @@ import type {
   ConversationSettings,
   ImageAttachmentSource,
   ImagePromptPlan,
+  PlanningProgressEvent,
 } from "../types";
 import { normalizeImageApiBaseUrl } from "./image-endpoint";
+import { requestPlanningContent } from "./planning-stream";
 
 const PLANNER_SYSTEM_PROMPT = `你是图像生成规划器。把用户创作意图整理成可直接交给图像模型的完整提示词，补全主体、环境、构图、镜头、光线、材质与风格，但不得改变核心主题。
 当请求多条提示词时，在保持主题一致的前提下规划明确且有价值的构图、镜头或氛围差异；不要把它们写成前后连续的分镜。
@@ -15,6 +17,7 @@ export async function planImagePrompts(
   promptCount: number,
   attachments: ImageAttachmentSource[],
   signal: AbortSignal,
+  onProgress?: (event: PlanningProgressEvent) => void,
 ): Promise<ImagePromptPlan> {
   if (!settings.baseUrl || !settings.apiKey || !settings.model) {
     throw new Error("AI 规划连接尚未配置完整。");
@@ -42,35 +45,43 @@ export async function planImagePrompts(
   let text: string;
   try {
     text = "__TAURI_INTERNALS__" in window
-      ? await requestPlanInDesktop(settings, sourcePrompt, promptCount, content, signal)
-      : await requestPlanInBrowser(settings, content, signal);
+      ? await requestPlanInDesktop(settings, sourcePrompt, promptCount, content, signal, onProgress)
+      : await requestPlanInBrowser(settings, content, signal, onProgress);
   } catch (error) {
     if (!content.some((part) => part.type === "image_url") || !isUnsupportedVisionError(error)) {
       throw error;
     }
     const textOnly = content.filter((part) => part.type !== "image_url");
     text = "__TAURI_INTERNALS__" in window
-      ? await requestPlanInDesktop(settings, sourcePrompt, promptCount, textOnly, signal)
-      : await requestPlanInBrowser(settings, textOnly, signal);
+      ? await requestPlanInDesktop(settings, sourcePrompt, promptCount, textOnly, signal, onProgress)
+      : await requestPlanInBrowser(settings, textOnly, signal, onProgress);
   }
 
-  return normalizeImagePromptPlan(text, promptCount);
+  onProgress?.({ type: "validating", requestId: "image-prompts" });
+  const plan = normalizeImagePromptPlan(text, promptCount);
+  onProgress?.({ type: "completed", requestId: "image-prompts" });
+  return plan;
 }
 
 async function requestPlanInBrowser(
   settings: ConversationSettings,
   content: Array<Record<string, unknown>>,
   signal: AbortSignal,
+  onProgress?: (event: PlanningProgressEvent) => void,
 ): Promise<string> {
   const baseUrl = normalizeImageApiBaseUrl(settings.baseUrl);
   const endpoint = new URL("chat/completions", `${baseUrl}/`).toString();
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${settings.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const requestId = crypto.randomUUID();
+  return requestPlanningContent({
+    endpoint,
+    apiKey: settings.apiKey,
+    model: settings.model,
+    reasoningEffort: settings.reasoningEffort,
+    requestId,
+    signal,
+    onProgress,
+    operation: "AI 提示词规划",
+    body: {
       model: settings.model,
       temperature: 0.5,
       messages: [
@@ -80,23 +91,8 @@ async function requestPlanInBrowser(
       ...(settings.supportsStructuredOutput
         ? { response_format: { type: "json_object" } }
         : {}),
-    }),
-    signal,
+    },
   });
-  if (!response.ok) {
-    let detail = "";
-    try {
-      const payload = (await response.json()) as { error?: { message?: unknown } };
-      detail = typeof payload.error?.message === "string" ? payload.error.message : "";
-    } catch {
-      // Keep the status-only error when the upstream does not return JSON.
-    }
-    throw new Error(detail || `AI 提示词规划失败（HTTP ${response.status}）。`);
-  }
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: unknown } }>;
-  };
-  return readMessageContent(payload.choices?.[0]?.message?.content);
 }
 
 async function requestPlanInDesktop(
@@ -105,9 +101,11 @@ async function requestPlanInDesktop(
   promptCount: number,
   content: Array<Record<string, unknown>>,
   signal: AbortSignal,
+  onProgress?: (event: PlanningProgressEvent) => void,
 ): Promise<string> {
   const requestId = crypto.randomUUID();
-  const { invoke } = await import("@tauri-apps/api/core");
+  const { Channel, invoke } = await import("@tauri-apps/api/core");
+  const onEvent = new Channel<PlanningProgressEvent>((event) => onProgress?.(event));
   const cancel = () => {
     void invoke("cancel_image_request", { requestId }).catch(() => undefined);
   };
@@ -115,11 +113,13 @@ async function requestPlanInDesktop(
   try {
     if (signal.aborted) throw abortError();
     const response = await invoke<{ content: string }>("plan_image_prompts", {
+      onEvent,
       request: {
         requestId,
         baseUrl: settings.baseUrl,
         apiKey: settings.apiKey,
         model: settings.model,
+        reasoningEffort: settings.reasoningEffort,
         sourcePrompt,
         promptCount,
         supportsStructuredOutput: settings.supportsStructuredOutput,
@@ -175,18 +175,6 @@ function parseJsonObject(value: string): Record<string, unknown> {
   } catch {
     throw new Error("AI 规划结果无法解析。");
   }
-}
-
-function readMessageContent(content: unknown): string {
-  if (typeof content === "string") return content;
-  if (Array.isArray(content)) {
-    return content
-      .map((part) => part && typeof part === "object" && "text" in part
-        ? String((part as { text?: unknown }).text ?? "")
-        : "")
-      .join("\n");
-  }
-  return JSON.stringify(content ?? "");
 }
 
 function isUnsupportedVisionError(error: unknown): boolean {

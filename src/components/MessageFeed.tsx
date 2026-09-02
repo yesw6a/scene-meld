@@ -7,7 +7,7 @@ import {
 } from "react";
 import * as stylex from "@stylexjs/stylex";
 import { Actions, Bubble } from "@ant-design/x";
-import { App as AntdApp, Button, Image, Tooltip } from "antd";
+import { App as AntdApp, Button, Tooltip } from "antd";
 import {
   AlertCircle,
   Copy,
@@ -21,13 +21,16 @@ import {
 } from "lucide-react";
 
 import type { ImageActionSource } from "../lib/image-actions";
+import type { ImageRetryState } from "../hooks/useImageRegeneration";
 import { imagePreviewSizing } from "../lib/image-sizes";
-import type { AssistantMessage, ChatMessage, UserMessage } from "../types";
+import type { AssistantMessage, ChatMessage, PlanningActivity, UserMessage } from "../types";
 import { colors, materials, motion, radii, shadows } from "../styles/tokens.stylex";
 import ImageResultCard from "./ImageResultCard";
 import UserMessageContent from "./UserMessageContent";
 import BatchImageGrid from "./BatchImageGrid";
 import BatchImageTile from "./BatchImageTile";
+import GeneratedImagePreviewGroup from "./GeneratedImagePreviewGroup";
+import PlanningActivityCard from "./PlanningActivityCard";
 
 interface MessageFeedProps {
   conversationId: string;
@@ -37,7 +40,18 @@ interface MessageFeedProps {
   onCopyImage: (source: ImageActionSource) => void | Promise<void>;
   onDownload: (message: AssistantMessage) => void | Promise<void>;
   onDownloadImage: (source: ImageActionSource) => void | Promise<void>;
-  onRegenerate: (message: AssistantMessage, source?: UserMessage) => void;
+  onRegenerate: (
+    message: AssistantMessage,
+    source: UserMessage | undefined,
+    siblings: AssistantMessage[],
+  ) => void;
+  onChooseComparison: (
+    message: AssistantMessage,
+    choice: "previous" | "candidate",
+  ) => void;
+  retryState: ImageRetryState | null;
+  planningActivity: PlanningActivity | null;
+  onCancelPlanning: () => void;
   onEditPrompt: (message: UserMessage) => void;
   onContinueEditing: (message: AssistantMessage) => void;
   onDelete: (messageIds: string[]) => void;
@@ -65,6 +79,10 @@ export default function MessageFeed({
   onDownload,
   onDownloadImage,
   onRegenerate,
+  onChooseComparison,
+  retryState,
+  planningActivity,
+  onCancelPlanning,
   onEditPrompt,
   onContinueEditing,
   onDelete,
@@ -84,51 +102,22 @@ export default function MessageFeed({
   const registerImageSource = useCallback((source: ImageActionSource) => {
     imageSourceRegistry.current.sources.set(source.url, source);
   }, []);
+  const resolveImageSource = useCallback((url: string) =>
+    imageSourceRegistry.current.sources.get(url) ?? fallbackImageActionSource(url), []);
 
   useEffect(() => {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     endRef.current?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth" });
-  }, [messages.length, lastMessage?.type === "assistant" ? lastMessage.status : undefined]);
+  }, [
+    messages.length,
+    lastMessage?.type === "assistant" ? lastMessage.status : undefined,
+    planningActivity?.phase,
+  ]);
 
   return (
     <div {...stylex.props(styles.root)} aria-live="polite">
       <div {...stylex.props(styles.list)}>
-        <Image.PreviewGroup
-          key={conversationId}
-          classNames={{
-            popup: {
-              root: "studio-image-preview",
-              footer: "studio-image-preview-footer",
-              actions: "studio-image-preview-transform-actions",
-            },
-          }}
-          preview={{
-            countRender: (current, total) => `第 ${current} / ${total} 张`,
-            actionsRender: (originalNode, info) => {
-              const source =
-                imageSourceRegistry.current.sources.get(info.image.url) ??
-                fallbackImageActionSource(info.image.url);
-
-              return (
-                <div className="studio-image-preview-toolbar">
-                  <PreviewImageActionButton
-                    icon={<Copy size={17} aria-hidden="true" />}
-                    label="复制图片"
-                    onClick={() => onCopyImage(source)}
-                  />
-                  <PreviewImageActionButton
-                    icon={<Download size={17} aria-hidden="true" />}
-                    label="下载图片"
-                    onClick={() => onDownloadImage(source)}
-                  />
-                  <span className="studio-image-preview-separator" aria-hidden="true" />
-                  {originalNode}
-                </div>
-              );
-            },
-          }}
-        >
-          {turns.map((turn) => (
+        {turns.map((turn) => (
             <section key={turn.id} {...stylex.props(styles.turn)} aria-label="一轮图片生成对话">
               {turn.user ? (
                 <div {...stylex.props(styles.userRow)}>
@@ -164,7 +153,12 @@ export default function MessageFeed({
               ) : null}
 
               {turn.assistants.length > 1 ? (
-                <BatchImageGrid
+                <GeneratedImagePreviewGroup
+                  getSource={resolveImageSource}
+                  onCopyImage={onCopyImage}
+                  onDownloadImage={onDownloadImage}
+                >
+                  <BatchImageGrid
                   messages={turn.assistants}
                   headerAction={
                     <DeleteTurnAction
@@ -188,15 +182,21 @@ export default function MessageFeed({
                           onContinueEditing={onContinueEditing}
                           onDelete={onDelete}
                           source={turn.user}
+                          siblings={turn.assistants}
                           variant="batch"
                         />
                       }
                       onCopyImage={onCopyImage}
                       onDownloadImage={onDownloadImage}
                       onImageSourceReady={registerImageSource}
+                      onChooseComparison={(message, choice) =>
+                        onChooseComparison(message, choice)
+                      }
+                      retryState={retryState?.messageId === message.id ? retryState : undefined}
                     />
                   )}
-                />
+                  />
+                </GeneratedImagePreviewGroup>
               ) : turn.assistants[0] ? (
                 <AssistantMessageView
                   message={turn.assistants[0]}
@@ -207,14 +207,19 @@ export default function MessageFeed({
                   onDownloadImage={onDownloadImage}
                   onImageSourceReady={registerImageSource}
                   onRegenerate={onRegenerate}
+                  onChooseComparison={onChooseComparison}
+                  retryState={retryState}
                   onContinueEditing={onContinueEditing}
                   onDelete={onDelete}
                   source={turn.user}
+                  siblings={turn.assistants}
                 />
               ) : null}
             </section>
           ))}
-        </Image.PreviewGroup>
+        {planningActivity?.conversationId === conversationId ? (
+          <PlanningActivityCard activity={planningActivity} onCancel={onCancelPlanning} />
+        ) : null}
         <div ref={endRef} {...stylex.props(styles.endSentinel)} />
       </div>
     </div>
@@ -277,17 +282,29 @@ function AssistantMessageView({
   onDownloadImage,
   onImageSourceReady,
   onRegenerate,
+  onChooseComparison,
+  retryState,
   onContinueEditing,
   onDelete,
   source,
-}: Omit<
+  siblings,
+}: Pick<
   MessageFeedProps,
-  "messages" | "conversationId" | "onCopy" | "onEditPrompt"
+  | "busy"
+  | "onCopyImage"
+  | "onDownload"
+  | "onDownloadImage"
+  | "onRegenerate"
+  | "onChooseComparison"
+  | "retryState"
+  | "onContinueEditing"
+  | "onDelete"
 > & {
   message: AssistantMessage;
   messageIds: string[];
   onImageSourceReady: (source: ImageActionSource) => void;
   source?: UserMessage;
+  siblings: AssistantMessage[];
 }) {
   return (
     <div {...stylex.props(styles.assistantRow)}>
@@ -300,6 +317,8 @@ function AssistantMessageView({
             onCopyImage={onCopyImage}
             onDownloadImage={onDownloadImage}
             onImageSourceReady={onImageSourceReady}
+            onChooseComparison={onChooseComparison}
+            retryState={retryState?.messageId === message.id ? retryState : undefined}
           />
         }
         footerPlacement="outer-start"
@@ -313,6 +332,7 @@ function AssistantMessageView({
             onContinueEditing={onContinueEditing}
             onDelete={onDelete}
             source={source}
+            siblings={siblings}
           />
         }
         rootClassName={stylex.props(styles.assistantBubble).className}
@@ -330,9 +350,12 @@ function AssistantMessageContent({
   onCopyImage,
   onDownloadImage,
   onImageSourceReady,
-}: Pick<MessageFeedProps, "onCopyImage" | "onDownloadImage"> & {
+  onChooseComparison,
+  retryState,
+}: Pick<MessageFeedProps, "onCopyImage" | "onDownloadImage" | "onChooseComparison"> & {
   message: AssistantMessage;
   onImageSourceReady: (source: ImageActionSource) => void;
+  retryState?: ImageRetryState;
 }) {
   if (message.status === "loading") {
     const previewSizing = imagePreviewSizing(message.request.size);
@@ -383,29 +406,9 @@ function AssistantMessageContent({
       onCopyImage={onCopyImage}
       onDownloadImage={onDownloadImage}
       onImageSourceReady={onImageSourceReady}
+      onChooseComparison={onChooseComparison}
+      retryState={retryState}
     />
-  );
-}
-
-function PreviewImageActionButton({
-  icon,
-  label,
-  onClick,
-}: {
-  icon: ReactNode;
-  label: string;
-  onClick: () => void | Promise<void>;
-}) {
-  return (
-    <button
-      type="button"
-      className="studio-image-preview-action"
-      aria-label={label}
-      title={label}
-      onClick={() => void onClick()}
-    >
-      {icon}
-    </button>
   );
 }
 
@@ -425,20 +428,25 @@ function AssistantMessageActions({
   onContinueEditing,
   onDelete,
   source,
+  siblings,
   variant = "default",
 }: MessageActionsProps & {
   message: AssistantMessage;
   onDownload: (message: AssistantMessage) => void | Promise<void>;
-  onRegenerate: (message: AssistantMessage, source?: UserMessage) => void;
+  onRegenerate: MessageFeedProps["onRegenerate"];
   onContinueEditing: (message: AssistantMessage) => void;
   source?: UserMessage;
+  siblings: AssistantMessage[];
   variant?: "default" | "batch";
 }) {
   const loading = message.status === "loading";
   const imageReady = message.status === "success";
-  const regenerateLabel = message.aspectStatus === "mismatched"
-    ? "按原设置重试此张"
-    : "重新生成";
+  const comparisonPending = Boolean(message.comparison);
+  const regenerateLabel = comparisonPending
+    ? "请先选择版本"
+    : message.aspectStatus === "mismatched"
+      ? "按原设置重试此张"
+      : "重新生成";
 
   return (
     <Actions
@@ -450,8 +458,8 @@ function AssistantMessageActions({
           key: "download-image",
           label: "下载图片",
           icon: <Download size={15} />,
-          onItemClick: imageReady ? () => void onDownload(message) : undefined,
-          actionRender: imageReady ? undefined : (
+          onItemClick: imageReady && !comparisonPending ? () => void onDownload(message) : undefined,
+          actionRender: imageReady && !comparisonPending ? undefined : (
             <ActionButton icon={<Download size={15} />} label="下载图片" disabled />
           ),
         },
@@ -460,9 +468,9 @@ function AssistantMessageActions({
           label: "继续修改",
           icon: <WandSparkles size={15} />,
           onItemClick:
-            imageReady && !busy ? () => onContinueEditing(message) : undefined,
+            imageReady && !busy && !comparisonPending ? () => onContinueEditing(message) : undefined,
           actionRender:
-            imageReady && !busy ? undefined : (
+            imageReady && !busy && !comparisonPending ? undefined : (
               <ActionButton icon={<WandSparkles size={15} />} label="继续修改" disabled />
             ),
         },
@@ -471,9 +479,11 @@ function AssistantMessageActions({
           label: regenerateLabel,
           icon: <RefreshCw size={15} />,
           onItemClick:
-            !busy && !loading ? () => onRegenerate(message, source) : undefined,
+            !busy && !loading && !comparisonPending
+              ? () => onRegenerate(message, source, siblings)
+              : undefined,
           actionRender:
-            !busy && !loading ? undefined : (
+            !busy && !loading && !comparisonPending ? undefined : (
               <ActionButton icon={<RefreshCw size={15} />} label={regenerateLabel} disabled />
             ),
         },

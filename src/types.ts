@@ -5,6 +5,7 @@ export const DEFAULT_IMAGE_QUANTITY = 1;
 export const IMAGE_BATCH_CONCURRENCY = 3;
 
 export type ImageQuality = "auto" | "low" | "medium" | "high";
+export type ReasoningEffort = "auto" | "low" | "medium" | "high";
 export type ImageSize =
   | "auto"
   | "1536x864"
@@ -59,6 +60,40 @@ export interface ImagePromptPlan {
   prompts: string[];
 }
 
+export type PlanningProgressEventType =
+  | "request-started"
+  | "response-started"
+  | "content-delta"
+  | "validating"
+  | "fallback-reasoning-auto"
+  | "completed";
+
+export interface PlanningProgressEvent {
+  type: PlanningProgressEventType;
+  requestId: string;
+  receivedChars?: number;
+  detail?: string;
+}
+
+export type PlanningActivityPhase =
+  | "preparing"
+  | "waiting"
+  | "receiving"
+  | "validating"
+  | "reviewing"
+  | "completed";
+
+export interface PlanningActivity {
+  conversationId: string;
+  mode: GenerationMode;
+  targetCount: number;
+  model: string;
+  startedAt: number;
+  phase: PlanningActivityPhase;
+  receivedChars: number;
+  nonStreaming: boolean;
+}
+
 export interface ConversationPlanningScopes {
   single: boolean;
   batch: boolean;
@@ -70,6 +105,7 @@ export interface ConversationSettings {
   baseUrl: string;
   apiKey: string;
   model: string;
+  reasoningEffort: ReasoningEffort;
   supportsVision: boolean;
   supportsStructuredOutput: boolean;
   rememberApiKey: boolean;
@@ -137,6 +173,23 @@ export interface UserMessage {
 export type AssistantStatus = "loading" | "success" | "error" | "aborted";
 export type ImageAspectStatus = "matched" | "mismatched" | "unverified";
 
+export interface GeneratedImageVersion {
+  id: string;
+  createdAt: number;
+  imageId?: string;
+  imageDataUrl?: string;
+  mimeType?: string;
+  revisedPrompt?: string | null;
+  source?: "b64_json" | "url";
+  actualWidth?: number;
+  actualHeight?: number;
+  aspectStatus?: ImageAspectStatus;
+}
+
+export interface ImageComparisonState {
+  candidate: GeneratedImageVersion;
+}
+
 export interface AssistantMessage {
   id: string;
   type: "assistant";
@@ -159,6 +212,7 @@ export interface AssistantMessage {
   shotId?: string;
   shotIndex?: number;
   shotTitle?: string;
+  comparison?: ImageComparisonState;
 }
 
 export interface CharacterSpec {

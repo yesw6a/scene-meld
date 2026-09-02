@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 
 import type { ImageActionSource } from "../lib/image-actions";
+import type { ImageRetryState } from "../hooks/useImageRegeneration";
 import { imageDimensionMismatchMessage } from "../lib/image-aspect";
 import { imageAspectRatio } from "../lib/image-sizes";
 import type { AssistantMessage } from "../types";
@@ -23,6 +24,11 @@ interface BatchImageTileProps {
   onCopyImage: (source: ImageActionSource) => void | Promise<void>;
   onDownloadImage: (source: ImageActionSource) => void | Promise<void>;
   onImageSourceReady: (source: ImageActionSource) => void;
+  onChooseComparison: (
+    message: AssistantMessage,
+    choice: "previous" | "candidate",
+  ) => void;
+  retryState?: ImageRetryState;
 }
 
 export default function BatchImageTile({
@@ -33,6 +39,8 @@ export default function BatchImageTile({
   onCopyImage,
   onDownloadImage,
   onImageSourceReady,
+  onChooseComparison,
+  retryState,
 }: BatchImageTileProps) {
   const state = resultState(message);
   const mismatchDetail = aspectMismatchDetail(message);
@@ -55,6 +63,8 @@ export default function BatchImageTile({
           onCopyImage={onCopyImage}
           onDownloadImage={onDownloadImage}
           onImageSourceReady={onImageSourceReady}
+          onChooseComparison={onChooseComparison}
+          retryState={retryState}
         />
       ) : (
         <div

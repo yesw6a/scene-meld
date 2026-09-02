@@ -69,17 +69,11 @@ export async function runStoryboardGeneration(
       cancelledCount += 1;
       continue;
     }
-    const prompt = appendImageCanvasConstraint(
-      [
-        options.plan.styleBible,
-        shot.imagePrompt,
-        `镜头 ${index + 1}：${shot.title}`,
-        `机位：${shot.camera}`,
-        `动作：${shot.action}`,
-        `连续性：${shot.continuityNotes}`,
-        previousDescription ? `上一镜头连续参考：${previousDescription}` : "",
-      ].filter(Boolean).join("\n"),
+    const prompt = buildStoryboardGenerationPrompt(
+      options.plan,
+      index,
       options.requestSettings.size,
+      previousDescription,
     );
     try {
       const continuityAttachments: ImageAttachmentSource[] = index === 0
@@ -136,4 +130,29 @@ export async function runStoryboardGeneration(
     }
   }
   return { successfulCount, failedCount, cancelledCount };
+}
+
+export function buildStoryboardGenerationPrompt(
+  plan: StoryboardPlan,
+  index: number,
+  size: GenerationRequestSettings["size"],
+  previousDescription = "",
+): string {
+  const shot = plan.shots[index];
+  if (!shot) {
+    throw new Error("无法读取待生成的分镜信息。");
+  }
+
+  return appendImageCanvasConstraint(
+    [
+      plan.styleBible,
+      shot.imagePrompt,
+      `镜头 ${index + 1}：${shot.title}`,
+      `机位：${shot.camera}`,
+      `动作：${shot.action}`,
+      `连续性：${shot.continuityNotes}`,
+      previousDescription ? `上一镜头连续参考：${previousDescription}` : "",
+    ].filter(Boolean).join("\n"),
+    size,
+  );
 }

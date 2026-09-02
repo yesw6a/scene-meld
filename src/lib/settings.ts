@@ -7,6 +7,7 @@ import {
   type ConversationPlanningScopes,
   type GenerationMode,
   type ImageQuality,
+  type ReasoningEffort,
 } from "../types";
 import { normalizeImageQuantity } from "./image-batch";
 import { migrateImageSize } from "./image-sizes";
@@ -16,6 +17,7 @@ const STORAGE_KEY = "scenemeld.settings.v1";
 const LEGACY_STORAGE_KEY = "gpt-image-2-studio.settings.v1";
 const VALID_QUALITIES = new Set<ImageQuality>(["auto", "low", "medium", "high"]);
 const VALID_MODES = new Set<GenerationMode>(["single", "batch", "storyboard"]);
+const VALID_REASONING_EFFORTS = new Set<ReasoningEffort>(["auto", "low", "medium", "high"]);
 const STORYBOARD_QUANTITIES = new Set([3, 4, 6, 9]);
 
 export const DEFAULT_CONVERSATION_SETTINGS: ConversationSettings = {
@@ -27,6 +29,7 @@ export const DEFAULT_CONVERSATION_SETTINGS: ConversationSettings = {
   baseUrl: "",
   apiKey: "",
   model: DEFAULT_CONVERSATION_MODEL,
+  reasoningEffort: "auto",
   supportsVision: false,
   supportsStructuredOutput: true,
   rememberApiKey: false,
@@ -304,6 +307,7 @@ function normalizeSettings(settings: GenerationSettings): GenerationSettings {
     model: typeof source.model === "string" && source.model
       ? source.model
       : DEFAULT_CONVERSATION_SETTINGS.model,
+    reasoningEffort: normalizeReasoningEffort(source.reasoningEffort),
     supportsVision: source.supportsVision === true,
     supportsStructuredOutput: source.supportsStructuredOutput !== false,
     rememberApiKey: settings.rememberApiKey,
@@ -348,11 +352,18 @@ function deserializeConversationSettings(
         ? conversation.apiKey
         : "",
     model: typeof conversation.model === "string" && conversation.model ? conversation.model : DEFAULT_CONVERSATION_SETTINGS.model,
+    reasoningEffort: normalizeReasoningEffort(conversation.reasoningEffort),
     supportsVision: conversation.supportsVision === true,
     supportsStructuredOutput: conversation.supportsStructuredOutput !== false,
     rememberApiKey: root.rememberApiKey === true || conversation.rememberApiKey === true,
     shareImageConnection: share,
   };
+}
+
+function normalizeReasoningEffort(value: unknown): ReasoningEffort {
+  return VALID_REASONING_EFFORTS.has(value as ReasoningEffort)
+    ? value as ReasoningEffort
+    : "auto";
 }
 
 function normalizeConversationPlanningScopes(

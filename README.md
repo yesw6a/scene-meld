@@ -11,6 +11,8 @@ account system, or server-side content storage.
 
 Repository: <https://github.com/yesw6a/scene-meld>
 
+Online Web App: <https://scene-meld.clovemu.com/>
+
 ## Choose your runtime
 
 ### SceneMeld Web
@@ -166,8 +168,8 @@ Connect the GitHub repository and use:
 
 `public/_headers` supplies static security headers and cache policies;
 `public/_redirects` supplies the SPA fallback. Configure a custom domain on the
-hosting platform as needed. The repository does not represent a particular
-deployment URL.
+hosting platform as needed. The current SceneMeld Web deployment is available
+at <https://scene-meld.clovemu.com/>.
 
 ### Desktop releases and production updates
 

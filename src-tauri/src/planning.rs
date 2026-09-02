@@ -1,36 +1,17 @@
-use serde::Deserialize;
 use serde_json::json;
+use tauri::ipc::Channel;
 
 use crate::{
-    http::{authenticated_client, build_endpoint, network_error, read_limited, redact_secret},
+    http::{authenticated_client, build_endpoint},
+    planning_stream::{request_content, PlanningProgressEvent, PlanningRequest},
     types::{CommandError, ConversationResponse, ImagePromptPlanningRequest},
 };
 
 const PLANNER_SYSTEM_PROMPT: &str = "你是图像生成规划器。把用户创作意图整理成可直接交给图像模型的完整提示词，补全主体、环境、构图、镜头、光线、材质与风格，但不得改变核心主题。当请求多条提示词时，在保持主题一致的前提下规划明确且有价值的构图、镜头或氛围差异；不要把它们写成前后连续的分镜。只返回 JSON：{\"prompts\":[\"...\"]}。prompts 数量必须与用户要求完全一致，不要返回 Markdown 或其他字段。";
 
-#[derive(Deserialize)]
-struct PlanningPayload {
-    choices: Option<Vec<PlanningChoice>>,
-    error: Option<PlanningError>,
-}
-
-#[derive(Deserialize)]
-struct PlanningChoice {
-    message: Option<PlanningMessage>,
-}
-
-#[derive(Deserialize)]
-struct PlanningMessage {
-    content: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct PlanningError {
-    message: Option<String>,
-}
-
 pub async fn plan_image_prompts(
     request: &ImagePromptPlanningRequest,
+    on_event: &Channel<PlanningProgressEvent>,
 ) -> Result<ConversationResponse, CommandError> {
     validate_request(request)?;
 
@@ -62,40 +43,19 @@ pub async fn plan_image_prompts(
     }
 
     let client = authenticated_client()?;
-    let response = client
-        .post(endpoint.clone())
-        .bearer_auth(&request.api_key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|_| network_error(&endpoint))?;
-    let status = response.status();
-    let bytes = read_limited(response, 2 * 1024 * 1024, "RESPONSE_TOO_LARGE").await?;
-    let payload = serde_json::from_slice::<PlanningPayload>(&bytes).ok();
-
-    if !status.is_success() {
-        let message = payload
-            .as_ref()
-            .and_then(|value| value.error.as_ref())
-            .and_then(|error| error.message.as_deref())
-            .map(|value| redact_secret(value, &request.api_key))
-            .unwrap_or_else(|| format!("AI 提示词规划失败（HTTP {}）。", status.as_u16()));
-        return Err(CommandError::with_status(
-            message,
-            "IMAGE_PROMPT_PLANNING_UPSTREAM_ERROR",
-            status.as_u16(),
-        ));
-    }
-
-    let content = payload
-        .and_then(|value| value.choices)
-        .and_then(|mut choices| choices.drain(..).next())
-        .and_then(|choice| choice.message)
-        .and_then(|message| message.content)
-        .filter(|content| !content.trim().is_empty())
-        .ok_or_else(|| {
-            CommandError::new("AI 未返回提示词规划内容。", "MISSING_IMAGE_PROMPT_PLAN")
-        })?;
+    let content = request_content(PlanningRequest {
+        client: &client,
+        endpoint: endpoint.as_str(),
+        api_key: &request.api_key,
+        model: &request.model,
+        reasoning_effort: request.reasoning_effort.as_deref(),
+        request_id: &request.request_id,
+        body: &body,
+        operation: "AI 提示词规划",
+        error_code: "IMAGE_PROMPT_PLANNING_UPSTREAM_ERROR",
+        on_event,
+    })
+    .await?;
 
     Ok(ConversationResponse { content })
 }

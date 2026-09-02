@@ -22,6 +22,8 @@ import {
   type GenerationSettings,
   type GenerationSnapshot,
   type ImageAttachmentSource,
+  type PlanningActivity,
+  type PlanningProgressEvent,
   type StoryboardPlan,
   type WorkspaceSnapshot,
 } from "../types";
@@ -47,6 +49,7 @@ interface UsePromptSubmissionOptions {
   setIsGenerating: Dispatch<SetStateAction<boolean>>;
   setStorageAvailable: Dispatch<SetStateAction<boolean>>;
   setLastConnectionStatus: Dispatch<SetStateAction<SettledConnectionStatus>>;
+  setPlanningActivity: Dispatch<SetStateAction<PlanningActivity | null>>;
   setDraft: Dispatch<SetStateAction<string>>;
   clearDraftImages: () => void;
   openConnectionSettings: () => void;
@@ -161,9 +164,15 @@ async function submitStoryboard(context: SubmissionContext): Promise<void> {
   const { options } = context;
   const batchId = createId("storyboard");
   const controller = new AbortController();
+  const planningEnabled =
+    context.requestSettings.conversation.planningScopes.storyboard &&
+    hasPlanningConnection(context);
   let storageWarningShown = false;
   options.requestRef.current = controller;
   options.setIsGenerating(true);
+  if (planningEnabled) {
+    startPlanningActivity(context, "storyboard", context.requestSnapshot.storyboardQuantity ?? 6);
+  }
   try {
     let plan: StoryboardPlan;
     try {
@@ -173,6 +182,7 @@ async function submitStoryboard(context: SubmissionContext): Promise<void> {
         context.requestSnapshot.storyboardQuantity ?? "auto",
         context.attachmentSources,
         controller.signal,
+        planningEnabled ? planningListener(options) : undefined,
       );
     } catch (error) {
       if (controller.signal.aborted) throw error;
@@ -189,6 +199,11 @@ async function submitStoryboard(context: SubmissionContext): Promise<void> {
         context.requestSnapshot.storyboardQuantity ?? "auto",
         context.attachmentSources,
         controller.signal,
+      );
+    }
+    if (planningEnabled) {
+      options.setPlanningActivity((current) =>
+        current ? { ...current, phase: "reviewing" } : current,
       );
     }
     const reviewedPlan = await options.reviewStoryboardPlan(plan);
@@ -240,6 +255,9 @@ async function submitStoryboard(context: SubmissionContext): Promise<void> {
       options.toast.error(error instanceof Error ? error.message : "分镜生成失败。 ");
     }
   } finally {
+    if (planningEnabled) {
+      options.setPlanningActivity(null);
+    }
     finishRequest(options, controller);
   }
 }
@@ -303,6 +321,7 @@ async function submitBatch(context: SubmissionContext & { quantity: number }): P
       options.toast.error(error instanceof Error ? error.message : "多图生成无法启动，请检查连接设置后重试。");
     }
   } finally {
+    clearPlanningActivity(context);
     finishRequest(options, controller);
   }
 }
@@ -402,6 +421,7 @@ async function submitSingle(context: SubmissionContext & { assistantId: string }
     }
     if (!aborted) options.setLastConnectionStatus("error");
   } finally {
+    clearPlanningActivity(context);
     finishRequest(options, controller);
   }
 }
@@ -416,6 +436,10 @@ async function resolveImagePrompts(
     return Array.from({ length: count }, () => context.prompt);
   }
 
+  const planningEnabled = hasPlanningConnection(context);
+  if (planningEnabled) {
+    startPlanningActivity(context, mode, count);
+  }
   try {
     const plan = await planImagePrompts(
       context.requestSettings.conversation,
@@ -423,6 +447,7 @@ async function resolveImagePrompts(
       count,
       context.attachmentSources,
       signal,
+      planningEnabled ? planningListener(context.options) : undefined,
     );
     return plan.prompts;
   } catch (error) {
@@ -435,7 +460,86 @@ async function resolveImagePrompts(
         : "单图 AI 规划失败，已使用原提示词继续生成。",
     );
     return Array.from({ length: count }, () => context.prompt);
+  } finally {
+    if (planningEnabled) {
+      context.options.setPlanningActivity((current) =>
+        current?.conversationId === context.conversationId
+          ? { ...current, phase: "completed" }
+          : current,
+      );
+    }
   }
+}
+
+function hasPlanningConnection(context: SubmissionContext): boolean {
+  const connection = context.requestSettings.conversation;
+  return Boolean(
+    connection.baseUrl.trim() &&
+      connection.apiKey.trim() &&
+      connection.model.trim(),
+  );
+}
+
+function startPlanningActivity(
+  context: SubmissionContext,
+  mode: "single" | "batch" | "storyboard",
+  targetCount: number | "auto",
+): void {
+  context.options.setPlanningActivity({
+    conversationId: context.conversationId,
+    mode,
+    targetCount: targetCount === "auto" ? 6 : targetCount,
+    model: context.requestSettings.conversation.model,
+    startedAt: Date.now(),
+    phase: "preparing",
+    receivedChars: 0,
+    nonStreaming: true,
+  });
+}
+
+function planningListener(
+  options: UsePromptSubmissionOptions,
+): (event: PlanningProgressEvent) => void {
+  return (event) => {
+    if (event.type === "fallback-reasoning-auto" && event.detail) {
+      options.toast.warning(event.detail);
+    }
+    options.setPlanningActivity((current) => {
+      if (!current) return current;
+      if (event.type === "request-started") {
+        return { ...current, phase: "waiting" };
+      }
+      if (event.type === "response-started") {
+        return { ...current, phase: "receiving" };
+      }
+      if (event.type === "content-delta") {
+        return {
+          ...current,
+          phase: "receiving",
+          receivedChars: event.receivedChars ?? current.receivedChars,
+        };
+      }
+      if (event.type === "fallback-reasoning-auto") {
+        return { ...current, phase: "waiting" };
+      }
+      if (event.type === "validating") {
+        return { ...current, phase: "validating" };
+      }
+      if (event.type === "completed") {
+        return {
+          ...current,
+          phase: current.mode === "storyboard" ? "reviewing" : "completed",
+        };
+      }
+      return current;
+    });
+  };
+}
+
+function clearPlanningActivity(context: SubmissionContext): void {
+  context.options.setPlanningActivity((current) =>
+    current?.conversationId === context.conversationId ? null : current,
+  );
 }
 
 function clearDraftIfCurrent(context: SubmissionContext): void {

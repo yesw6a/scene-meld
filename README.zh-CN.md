@@ -8,6 +8,8 @@ SceneMeld 是一个基于 React、StyleX 与 Ant Design X 的对话式图片创�
 
 仓库：<https://github.com/yesw6a/scene-meld>
 
+在线体验：<https://scene-meld.clovemu.com/>
+
 ## 选择运行方式
 
 ### SceneMeld Web
@@ -124,7 +126,7 @@ pnpm desktop:build
 - Root directory：仓库根目录
 - Environment variables：不需要
 
-`public/_headers` 提供静态安全头和缓存策略；`public/_redirects` 提供 SPA fallback。可按需在托管平台配置自定义域名；仓库不代表任何特定部署地址。
+`public/_headers` 提供静态安全头和缓存策略；`public/_redirects` 提供 SPA fallback。可按需在托管平台配置自定义域名；SceneMeld Web 当前的线上部署地址为 <https://scene-meld.clovemu.com/>。
 
 ### Desktop 发布与生产更新
 

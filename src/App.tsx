@@ -17,6 +17,7 @@ import useConversationRenaming from "./hooks/useConversationRenaming";
 import useImageDrafts from "./hooks/useImageDrafts";
 import useDesktopUpdater from "./hooks/useDesktopUpdater";
 import useImageCopyActions from "./hooks/useImageCopyActions";
+import useImageRegeneration from "./hooks/useImageRegeneration";
 import usePromptSubmission from "./hooks/usePromptSubmission";
 import {
   createConversation,
@@ -58,6 +59,7 @@ import type {
   ConnectionStatus,
   Conversation,
   GenerationSettings,
+  PlanningActivity,
   PromptOptimizationResult,
   StoryboardPlan,
   UserMessage,
@@ -85,6 +87,7 @@ export default function StudioApp() {
   const [optimizationSourcePrompt, setOptimizationSourcePrompt] = useState("");
   const [optimizationOpen, setOptimizationOpen] = useState(false);
   const [storyboardReviewPlan, setStoryboardReviewPlan] = useState<StoryboardPlan | null>(null);
+  const [planningActivity, setPlanningActivity] = useState<PlanningActivity | null>(null);
   const [historyClearing, setHistoryClearing] = useState(false);
   const [lastConnectionStatus, setLastConnectionStatus] =
     useState<SettledConnectionStatus>("ready");
@@ -114,6 +117,9 @@ export default function StudioApp() {
   const activeConversation = workspace
     ? (workspace.conversations.find((item) => item.id === workspace.activeId) ??
       workspace.conversations[0])
+    : null;
+  const activePlanningActivity = planningActivity?.conversationId === activeConversation?.id
+    ? planningActivity
     : null;
   const {
     attachments: draftImages,
@@ -246,6 +252,7 @@ export default function StudioApp() {
     setIsGenerating,
     setStorageAvailable,
     setLastConnectionStatus,
+    setPlanningActivity,
     setDraft,
     clearDraftImages,
     openConnectionSettings,
@@ -253,6 +260,23 @@ export default function StudioApp() {
     updateConversation,
     updateAssistantMessage,
   });
+
+  const imageRegeneration = useImageRegeneration({
+    settings,
+    isGenerating,
+    requestRef: abortRef,
+    storageAvailable,
+    toast,
+    setIsGenerating,
+    setStorageAvailable,
+    setLastConnectionStatus,
+    updateAssistantMessage,
+  });
+
+  const handleCancelActiveRequest = useCallback(() => {
+    abortRef.current?.abort();
+    finishStoryboardReview(null);
+  }, [finishStoryboardReview]);
 
   const handleOptimizePrompt = useCallback(async (rawPrompt: string) => {
     if (isGenerating || isOptimizingPrompt || optimizationAbortRef.current) return;
@@ -479,20 +503,26 @@ export default function StudioApp() {
     }
   };
 
-  const handleRegenerate = (item: AssistantMessage, source?: UserMessage) => {
+  const handleRegenerate = (
+    item: AssistantMessage,
+    source: UserMessage | undefined,
+    siblings: AssistantMessage[],
+  ) => {
     void (async () => {
+      if (!activeConversation) return;
       const resolved = await resolveMessageImageAttachments(source?.attachments);
       if (!resolved.ok) {
         toast.error(missingAttachmentMessage(resolved.missing));
         return;
       }
 
-      await submitPrompt(
-        item.prompt,
-        { ...item.request, quantity: 1, mode: "single" },
-        activeConversation?.id,
-        resolved.sources,
-      );
+      await imageRegeneration.regenerate({
+        conversationId: activeConversation.id,
+        message: item,
+        source,
+        siblings,
+        attachmentSources: resolved.sources,
+      });
     })();
   };
 
@@ -667,11 +697,13 @@ export default function StudioApp() {
         <section
           {...stylex.props(
             styles.conversationPane,
-            activeConversation.messages.length === 0 && styles.conversationPaneEmpty,
+            activeConversation.messages.length === 0 &&
+              !activePlanningActivity &&
+              styles.conversationPaneEmpty,
           )}
           aria-label="图片生成对话"
         >
-          {activeConversation.messages.length === 0 ? (
+          {activeConversation.messages.length === 0 && !activePlanningActivity ? (
             <WelcomePanel
               configured={configured}
               onChoosePrompt={setDraft}
@@ -686,6 +718,12 @@ export default function StudioApp() {
               onDownload={handleDownload}
               onDownloadImage={imageCopyActions.downloadImage}
               onRegenerate={handleRegenerate}
+              onChooseComparison={(message, choice) =>
+                imageRegeneration.chooseComparison(activeConversation.id, message, choice)
+              }
+              retryState={imageRegeneration.retryState}
+              planningActivity={activePlanningActivity}
+              onCancelPlanning={handleCancelActiveRequest}
               onEditPrompt={handleEditPrompt}
               onContinueEditing={handleContinueEditing}
               onDelete={(messageIds) =>
@@ -707,10 +745,7 @@ export default function StudioApp() {
           onRemoveFile={removeDraftImage}
           onSubmit={(value) => void submitPrompt(value)}
           onOptimize={(value) => void handleOptimizePrompt(value)}
-          onCancel={() => {
-            abortRef.current?.abort();
-            finishStoryboardReview(null);
-          }}
+          onCancel={handleCancelActiveRequest}
           onQuickSettingChange={handleQuickSettingChange}
         />
       </main>
