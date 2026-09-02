@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.9.1 (2026-09-02)
+
+### 📦 Version
+
+- 项目版本从 `1.9.0` 升级到 `1.9.1`。
+- `package.json`、Tauri 配置、Rust crate 与 Cargo lockfile 版本统一为 `1.9.1`。
+
+### 🐛 Fixed
+
+- 修复单图打开大图后缺少复制、下载和图片变换工具栏的问题；单图与多图现在共用每轮独立的预览工具栏，单图不会显示无意义的翻页按钮。
+
+### ✅ Verify
+
+- `pnpm.cmd run typecheck` 通过。
+- `pnpm.cmd run build` 通过；Vite 保留主包超过 500 kB 的非阻塞提示。
+- `pnpm.cmd run desktop:check` 通过。
+- `git diff --check` 通过。
+
 ## v1.9.0 (2026-09-02)
 
 ### 📦 Version

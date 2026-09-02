@@ -152,68 +152,72 @@ export default function MessageFeed({
                 </div>
               ) : null}
 
-              {turn.assistants.length > 1 ? (
+              {turn.assistants.length > 0 ? (
                 <GeneratedImagePreviewGroup
                   getSource={resolveImageSource}
                   onCopyImage={onCopyImage}
                   onDownloadImage={onDownloadImage}
                 >
-                  <BatchImageGrid
-                  messages={turn.assistants}
-                  headerAction={
-                    <DeleteTurnAction
-                      messageIds={turn.messageIds}
-                      busy={busy}
-                      onDelete={onDelete}
-                    />
-                  }
-                  renderTile={(message, index) => (
-                    <BatchImageTile
-                      message={message}
-                      index={index}
-                      total={turn.assistants.length}
-                      actions={
-                        <AssistantMessageActions
-                          message={message}
+                  {turn.assistants.length > 1 ? (
+                    <BatchImageGrid
+                      messages={turn.assistants}
+                      headerAction={
+                        <DeleteTurnAction
                           messageIds={turn.messageIds}
                           busy={busy}
-                          onDownload={onDownload}
-                          onRegenerate={onRegenerate}
-                          onContinueEditing={onContinueEditing}
                           onDelete={onDelete}
-                          source={turn.user}
-                          siblings={turn.assistants}
-                          variant="batch"
                         />
                       }
+                      renderTile={(message, index) => (
+                        <BatchImageTile
+                          message={message}
+                          index={index}
+                          total={turn.assistants.length}
+                          actions={
+                            <AssistantMessageActions
+                              message={message}
+                              messageIds={turn.messageIds}
+                              busy={busy}
+                              onDownload={onDownload}
+                              onRegenerate={onRegenerate}
+                              onContinueEditing={onContinueEditing}
+                              onDelete={onDelete}
+                              source={turn.user}
+                              siblings={turn.assistants}
+                              variant="batch"
+                            />
+                          }
+                          onCopyImage={onCopyImage}
+                          onDownloadImage={onDownloadImage}
+                          onImageSourceReady={registerImageSource}
+                          onChooseComparison={(message, choice) =>
+                            onChooseComparison(message, choice)
+                          }
+                          retryState={
+                            retryState?.messageId === message.id ? retryState : undefined
+                          }
+                        />
+                      )}
+                    />
+                  ) : turn.assistants[0] ? (
+                    <AssistantMessageView
+                      message={turn.assistants[0]}
+                      messageIds={turn.messageIds}
+                      busy={busy}
                       onCopyImage={onCopyImage}
+                      onDownload={onDownload}
                       onDownloadImage={onDownloadImage}
                       onImageSourceReady={registerImageSource}
-                      onChooseComparison={(message, choice) =>
-                        onChooseComparison(message, choice)
-                      }
-                      retryState={retryState?.messageId === message.id ? retryState : undefined}
+                      onRegenerate={onRegenerate}
+                      onChooseComparison={onChooseComparison}
+                      retryState={retryState}
+                      onContinueEditing={onContinueEditing}
+                      onDelete={onDelete}
+                      source={turn.user}
+                      siblings={turn.assistants}
                     />
-                  )}
-                  />
+                  ) : null}
                 </GeneratedImagePreviewGroup>
-              ) : turn.assistants[0] ? (
-                <AssistantMessageView
-                  message={turn.assistants[0]}
-                  messageIds={turn.messageIds}
-                  busy={busy}
-                  onCopyImage={onCopyImage}
-                  onDownload={onDownload}
-                  onDownloadImage={onDownloadImage}
-                  onImageSourceReady={registerImageSource}
-                  onRegenerate={onRegenerate}
-                  onChooseComparison={onChooseComparison}
-                  retryState={retryState}
-                  onContinueEditing={onContinueEditing}
-                  onDelete={onDelete}
-                  source={turn.user}
-                  siblings={turn.assistants}
-                />
               ) : null}
             </section>
           ))}
