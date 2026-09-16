@@ -1,4 +1,24 @@
-export const IMAGE_MODEL = "gpt-image-2" as const;
+export const IMAGE_MODELS = [
+  "gpt-image-2.5-flare",
+  "gpt-image-2.5-flare-1k",
+  "gpt-image-2.5-flare-2k",
+  "gpt-image-2.5-flare-4k",
+  "gpt-image-2.5-sunburst",
+  "gpt-image-2.5-sunburst-1k",
+  "gpt-image-2.5-sunburst-2k",
+  "gpt-image-2.5-sunburst-4k",
+  "gpt-image-2.5",
+  "gpt-image-2",
+  "gpt-image-2-1k",
+  "gpt-image-2-2k",
+  "gpt-image-2-4k",
+] as const;
+export type ImageModel = (typeof IMAGE_MODELS)[number];
+export const IMAGE_MODEL: ImageModel = "gpt-image-2.5-flare";
+
+export function normalizeImageModel(model: unknown): ImageModel {
+  return IMAGE_MODELS.includes(model as ImageModel) ? model as ImageModel : IMAGE_MODEL;
+}
 export const DEFAULT_CONVERSATION_MODEL = "gpt-5.6-sol" as const;
 export const MAX_IMAGE_BATCH_SIZE = 9;
 export const DEFAULT_IMAGE_QUANTITY = 1;

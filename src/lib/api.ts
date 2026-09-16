@@ -3,7 +3,6 @@ import type {
   GenerationRequestSettings,
   ImageAttachmentSource,
 } from "../types";
-import { IMAGE_MODEL } from "../types";
 import type { ImageTransport } from "./image-transport";
 import {
   buildImageApiEndpoint,
@@ -99,7 +98,7 @@ async function requestGeneratedImageInBrowser(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: IMAGE_MODEL,
+        model: settings.model,
         prompt,
         size: settings.size,
         quality: settings.quality,
@@ -120,7 +119,7 @@ async function requestEditedImageInBrowser(
 ): Promise<GenerateImageResponse> {
   const endpoint = buildImageApiEndpoint(settings.baseUrl, "images/edits");
   const formData = new FormData();
-  formData.append("model", IMAGE_MODEL);
+  formData.append("model", settings.model);
   formData.append("prompt", prompt);
   formData.append("size", settings.size);
   formData.append("quality", settings.quality);

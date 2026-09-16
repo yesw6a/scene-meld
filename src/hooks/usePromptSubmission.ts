@@ -15,7 +15,6 @@ import { parsePromptDirectives } from "../lib/prompt-directives";
 import { runStoryboardGeneration } from "../lib/storyboard-generation";
 import { base64ToBlob, saveGeneratedImage } from "../lib/studio-db";
 import {
-  IMAGE_MODEL,
   type AssistantMessage,
   type Conversation,
   type GenerationRequestSettings,
@@ -107,7 +106,7 @@ export default function usePromptSubmission(options: UsePromptSubmissionOptions)
       const requestSnapshot: GenerationSnapshot = snapshotOverride
         ? { ...snapshotOverride, quantity: 1, mode: "single" }
         : {
-            model: IMAGE_MODEL,
+            model: options.settings.model,
             size: resolved!.settings.size,
             quality: resolved!.settings.quality,
             quantity: resolved!.plan.mode === "batch" ? resolved!.plan.count : 1,

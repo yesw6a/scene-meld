@@ -203,7 +203,7 @@ export default function SettingsDrawer({
       setConversationEndpointError(undefined);
       setSaving(true);
       try {
-        await onSave({ ...draft, model: IMAGE_MODEL });
+        await onSave(draft);
       } finally {
         setSaving(false);
       }
@@ -249,7 +249,7 @@ export default function SettingsDrawer({
       ...draft,
       baseUrl: normalizedBaseUrl,
       apiKey: draft.apiKey.trim(),
-      model: IMAGE_MODEL,
+      model: draft.model,
       conversation: {
         ...draft.conversation,
         baseUrl: conversationBaseUrl,
@@ -367,6 +367,7 @@ export default function SettingsDrawer({
 
           {section === "connection" ? (
             <ConnectionSettingsSection
+              key={open ? "open" : "closed"}
               draft={draft}
               desktop={desktop}
               endpointError={endpointError}
@@ -438,7 +439,7 @@ export default function SettingsDrawer({
               连接配置
             </Typography.Title>
             <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-              清除 API 基础地址与 API Key，并恢复画面比例和质量默认值。模型固定为 gpt-image-2，创作记录不受影响。
+              清除 API 基础地址与 API Key，并恢复画面比例和质量默认值。默认模型为 {IMAGE_MODEL}，创作记录不受影响。
             </Typography.Paragraph>
           </div>
           <Button

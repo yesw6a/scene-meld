@@ -2,6 +2,7 @@ import {
   DEFAULT_CONVERSATION_MODEL,
   DEFAULT_IMAGE_QUANTITY,
   IMAGE_MODEL,
+  normalizeImageModel,
   type GenerationSettings,
   type ConversationSettings,
   type ConversationPlanningScopes,
@@ -251,7 +252,7 @@ function deserializeSettings(
       !desktop && stored.rememberApiKey && typeof stored.apiKey === "string"
         ? stored.apiKey
         : "",
-    model: IMAGE_MODEL,
+    model: normalizeImageModel(stored.model),
     size: migrateImageSize(stored.size),
     quality: VALID_QUALITIES.has(stored.quality as ImageQuality)
       ? (stored.quality as ImageQuality)
@@ -277,7 +278,7 @@ function persistLocalPreferences(settings: GenerationSettings): void {
   const stored: StoredSettings = {
     version: 1,
     baseUrl: settings.baseUrl,
-    model: IMAGE_MODEL,
+    model: normalizeImageModel(settings.model),
     size: settings.size,
     quality: settings.quality,
     quantity: normalizeImageQuantity(settings.quantity),
@@ -319,7 +320,7 @@ function normalizeSettings(settings: GenerationSettings): GenerationSettings {
   }
   return {
     ...settings,
-    model: IMAGE_MODEL,
+    model: normalizeImageModel(settings.model),
     quantity: normalizeImageQuantity(settings.quantity),
     mode: VALID_MODES.has(settings.mode) ? settings.mode : "single",
     storyboardQuantity:

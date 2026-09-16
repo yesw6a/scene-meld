@@ -40,7 +40,7 @@ export default function WelcomePanel({
           <small>
             {configured
               ? "可直接在下方输入提示词并开始创作。"
-              : "配置 Endpoint 和 API Key 后即可使用 gpt-image-2 开始生成。"}
+              : "配置 Endpoint、API Key 和生图模型后即可开始生成。"}
           </small>
         </span>
         {!configured ? (

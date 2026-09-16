@@ -9,6 +9,14 @@ export interface ConversationModelConnection {
 export async function listConversationModels(
   connection: ConversationModelConnection,
 ): Promise<string[]> {
+  const models = await listConnectionModels(connection);
+  if (!models.length) throw new Error("上游未返回可用的模型名称，请继续手动填写。");
+  return models;
+}
+
+export async function listConnectionModels(
+  connection: ConversationModelConnection,
+): Promise<string[]> {
   const baseUrl = normalizeImageApiBaseUrl(connection.baseUrl);
   const apiKey = connection.apiKey.trim();
   if (!apiKey) {
@@ -20,9 +28,6 @@ export async function listConversationModels(
     : await listModelsInBrowser(baseUrl, apiKey);
 
   const unique = [...new Set(models.map((model) => model.trim()).filter(Boolean))];
-  if (!unique.length) {
-    throw new Error("上游未返回可用的模型名称，请继续手动填写。");
-  }
   return unique.sort((left, right) => left.localeCompare(right));
 }
 
@@ -32,6 +37,9 @@ async function listModelsInBrowser(baseUrl: string, apiKey: string): Promise<str
   try {
     response = await fetch(endpoint, {
       method: "GET",
+      redirect: "error",
+      credentials: "omit",
+      referrerPolicy: "no-referrer",
       headers: { Authorization: `Bearer ${apiKey}` },
     });
   } catch {

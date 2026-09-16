@@ -28,7 +28,7 @@ export default function ConversationPlanningScopeSelector({
     <fieldset {...stylex.props(styles.fieldset)}>
       <legend {...stylex.props(styles.legend)}>AI 规划适用场景</legend>
       <p {...stylex.props(styles.intro)}>
-        选择哪些生成模式会在生图前调用当前 AI 规划模型；未勾选的模式会直接交给 gpt-image-2。手动提示词优化不受这里影响。
+        选择哪些生成模式会在生图前调用当前 AI 规划模型；未勾选的模式会直接交给当前生图模型。手动提示词优化不受这里影响。
       </p>
       <div {...stylex.props(styles.options)}>
         <PlanningScopeOption

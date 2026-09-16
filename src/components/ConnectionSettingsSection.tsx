@@ -21,6 +21,7 @@ import {
 } from "../types";
 import { colors, motion, radii, shadows } from "../styles/tokens.stylex";
 import ConversationPlanningScopeSelector from "./ConversationPlanningScopeSelector";
+import ImageModelSelector from "./ImageModelSelector";
 
 type ConnectionMode = "shared" | "separate";
 
@@ -133,7 +134,7 @@ export default function ConnectionSettingsSection({
                 id="image-channel-heading"
                 icon={<ImageIcon size={16} aria-hidden="true" />}
                 title="图片生成连接"
-                detail="固定模型：gpt-image-2"
+                detail={`当前模型：${draft.model}`}
                 status={hasUnsavedChanges ? "未保存" : imageReady ? "已配置" : "待配置"}
                 ready={imageReady}
                 dirty={hasUnsavedChanges}
@@ -324,6 +325,7 @@ function ImageConnectionFields({
           onChange={(event) => onUpdate("apiKey", event.target.value)}
         />
       </Form.Item>
+      <ImageModelSelector draft={draft} onChange={(model) => onUpdate("model", model)} />
     </div>
   );
 }

@@ -60,7 +60,7 @@ export function validateGptImage2Dimensions(
   if (Math.max(width, height) / Math.min(width, height) > capabilities.maxAspectRatio) {
     return {
       valid: false,
-      message: "当前模型最长边不能超过最短边的 3 倍。",
+      message: "当前应用支持的最长边不能超过最短边的 3 倍。",
     };
   }
 
@@ -91,7 +91,7 @@ export function resolveGptImage2Ratio(
   if (maxRatio > GPT_IMAGE_2_CAPABILITIES.maxAspectRatio) {
     return {
       ratio,
-      error: "当前模型最长边不能超过最短边的 3 倍。建议改为 1:3，或选择 9:16。",
+      error: "当前应用支持的最长边不能超过最短边的 3 倍。建议改为 1:3，或选择 9:16。",
     };
   }
 
@@ -122,7 +122,7 @@ export function resolveGptImage2Ratio(
   if (!selected) {
     return {
       ratio,
-      error: "这个比例无法精确换算为模型支持的尺寸。请使用更常见的整数比例。",
+      error: "这个比例无法精确换算为应用支持的尺寸。请使用更常见的整数比例。",
     };
   }
 

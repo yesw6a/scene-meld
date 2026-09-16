@@ -65,7 +65,7 @@ import type {
   UserMessage,
   WorkspaceSnapshot,
 } from "./types";
-import { IMAGE_MODEL } from "./types";
+import { normalizeImageModel } from "./types";
 
 type SettledConnectionStatus = Extract<ConnectionStatus, "ready" | "success" | "error">;
 export default function StudioApp() {
@@ -325,10 +325,10 @@ export default function StudioApp() {
   }, [isGenerating, isOptimizingPrompt, settings, toast]);
 
   const handleSaveSettings = async (nextSettings: GenerationSettings) => {
-    const normalizedSettings = { ...nextSettings, model: IMAGE_MODEL };
+    const normalizedSettings = { ...nextSettings, model: normalizeImageModel(nextSettings.model) };
     const networkConnectionChanged =
       normalizedSettings.baseUrl !== settings.baseUrl ||
-      normalizedSettings.apiKey !== settings.apiKey;
+      normalizedSettings.apiKey !== settings.apiKey || normalizedSettings.model !== settings.model;
     const conversationConnectionChanged =
       normalizedSettings.conversation.baseUrl !== settings.conversation.baseUrl ||
       normalizedSettings.conversation.apiKey !== settings.conversation.apiKey ||
@@ -382,7 +382,7 @@ export default function StudioApp() {
         ...(patch.mode === "batch" && (patch.quantity ?? current.quantity) < 2
           ? { quantity: 2 }
           : {}),
-        model: IMAGE_MODEL,
+        model: normalizeImageModel(patch.model ?? current.model),
       };
       saveSettingsPreferences(next);
       return next;
@@ -688,7 +688,7 @@ export default function StudioApp() {
             generationCount={countGenerations(activeConversation)}
             connection={connection}
             endpointLabel={endpointHostLabel(settings.baseUrl)}
-            model={IMAGE_MODEL}
+            model={settings.model}
             onOpenNavigation={() => setNavigationOpen(true)}
             onOpenSettings={openConnectionSettings}
           />
