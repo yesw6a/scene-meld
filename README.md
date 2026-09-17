@@ -4,6 +4,8 @@
 
 English | [简体中文](./README.zh-CN.md)
 
+New to SceneMeld? Read the illustrated [English user guide](./docs/user-guide.md) or [中文使用教程](./docs/user-guide.zh-CN.md) for connection setup, image creation and editing, batches, storyboards, and troubleshooting.
+
 SceneMeld is a conversational image workspace built with React, StyleX, and
 Ant Design X. You bring a compatible Endpoint and API key. The project ships
 Web and Desktop editions, but it does not provide an image API, relay or proxy,
@@ -55,7 +57,7 @@ operating system families before a public release.
 - Image gallery preview for each conversation
 - Conversations, reference images, and generated images are persisted locally
   in IndexedDB when possible
-- The image model is fixed to `gpt-image-2`; you configure the Endpoint
+- Select an image model from the supported candidates (default: `gpt-image-2.5-flare`); you configure the Endpoint
 - Endpoint settings, generation preferences, and appearance are stored locally
 - Web API keys stay in memory by default, or can be saved to `localStorage`
   when you opt in
@@ -68,7 +70,7 @@ operating system families before a public release.
 
 Your Endpoint must implement:
 
-- The fixed request model: `gpt-image-2`
+- The selected full image model ID (default: `gpt-image-2.5-flare`; availability depends on the target service)
 - `POST /images/generations`
 - `POST /images/edits` as a multipart image-to-image request
 - `data[0].b64_json`, or a downloadable `data[0].url`
@@ -123,8 +125,8 @@ pnpm dev
 
 The default address is usually <http://localhost:5173>. The project needs no
 `.env`, server-side API key, or other runtime environment variables. After the
-first launch, configure an Endpoint and API key in Settings; the model remains
-fixed to `gpt-image-2`.
+first launch, configure an Endpoint and API key in connection settings, then select
+an image model supported by your service. See the [user guide](./docs/user-guide.md) for details.
 
 ## Web validation and build
 

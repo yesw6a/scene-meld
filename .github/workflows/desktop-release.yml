@@ -10,7 +10,42 @@ permissions:
   contents: write
 
 jobs:
+  prepare-release:
+    name: Validate release notes
+    runs-on: ubuntu-latest
+    outputs:
+      body: ${{ steps.notes.outputs.body }}
+    steps:
+      - name: Require a version tag
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+        run: test "$REF_TYPE" = tag
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Generate release notes
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: node scripts/release-notes.mjs "$RELEASE_TAG" "$RUNNER_TEMP/release-notes.md"
+
+      - name: Share release notes
+        id: notes
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('node:fs');
+            const path = require('node:path');
+            const body = fs.readFileSync(path.join(process.env.RUNNER_TEMP, 'release-notes.md'), 'utf8');
+            core.setOutput('body', body);
+
   release-desktop:
+    needs: prepare-release
     name: Build ${{ matrix.name }} release
     runs-on: ${{ matrix.os }}
     strategy:
@@ -109,10 +144,7 @@ jobs:
         with:
           tagName: v__VERSION__
           releaseName: SceneMeld v__VERSION__
-          releaseBody: |
-            SceneMeld Desktop v__VERSION__ 多平台预览构建。
-
-            当前构建未配置 Windows 代码签名或 macOS 公证，可能触发 SmartScreen 或 Gatekeeper 提示。请先核对仓库来源和校验值。
+          releaseBody: ${{ needs.prepare-release.outputs.body }}
           releaseDraft: false
           prerelease: false
           tauriScript: pnpm tauri

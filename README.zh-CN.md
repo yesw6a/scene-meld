@@ -4,6 +4,8 @@
 
 [English](./README.md) | 简体中文
 
+首次使用？阅读图文版 [中文使用教程](./docs/user-guide.zh-CN.md) / [English user guide](./docs/user-guide.md)，了解连接配置、生图、参考图修改、多图与分镜及常见问题。
+
 SceneMeld 是一个基于 React、StyleX 与 Ant Design X 的对话式图片创作工作台。用户自行提供兼容的 Endpoint 与 API Key。项目同时提供 Web 和 Desktop 版本，但不提供图片 API、中转或代理、账户系统，也不提供服务端内容存储。
 
 仓库：<https://github.com/yesw6a/scene-meld>
@@ -41,7 +43,7 @@ Desktop 不依赖浏览器 CORS。选择记住 API Key 后，应用会尝试将�
 - 生成、停止、重新生成、继续修改、复制、下载与删除
 - 每个会话中的图片图集预览
 - 会话、参考图与生成图片会在可用时保存到本地 IndexedDB
-- 生图模型固定为 `gpt-image-2`，Endpoint 由用户配置
+- 生图模型可从应用支持的候选中选择，默认 `gpt-image-2.5-flare`；Endpoint 由用户配置
 - Endpoint 设置、生成偏好和外观保存在本地
 - Web API Key 默认仅保留在内存中；用户选择后可保存到 `localStorage`
 - Desktop API Key 可由用户选择保存到操作系统凭据管理器；实际保护能力取决于操作系统和账户配置
@@ -51,7 +53,7 @@ Desktop 不依赖浏览器 CORS。选择记住 API Key 后，应用会尝试将�
 
 Endpoint 需要实现：
 
-- 固定请求模型：`gpt-image-2`
+- 支持用户选择的完整生图模型 ID（默认 `gpt-image-2.5-flare`，可用权限以目标服务为准）
 - `POST /images/generations`
 - 图生图所需的 `POST /images/edits` multipart 请求
 - `data[0].b64_json`，或可下载的 `data[0].url`
@@ -91,7 +93,7 @@ pnpm install
 pnpm dev
 ```
 
-默认地址通常为 <http://localhost:5173>。项目不需要 `.env`、服务端 API Key 或其他运行时环境变量。首次启动后，在设置中填写 Endpoint 与 API Key；模型始终固定为 `gpt-image-2`。
+默认地址通常为 <http://localhost:5173>。项目不需要 `.env`、服务端 API Key 或其他运行时环境变量。首次启动后，在连接配置中填写 Endpoint 与 API Key，并选择目标服务支持的生图模型；详细步骤见[使用教程](./docs/user-guide.zh-CN.md)。
 
 ## Web 校验与构建
 
