@@ -1,5 +1,6 @@
+import { lazy, Suspense } from "react";
 import * as stylex from "@stylexjs/stylex";
-import { Alert, Button, Progress, Space, Typography } from "antd";
+import { Alert, Button, Progress, Typography } from "antd";
 import { CheckCircle2, Download, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 
 import type { DesktopUpdateSnapshot } from "../hooks/useDesktopUpdater";
@@ -7,11 +8,14 @@ import { updateActivityLabel, updateSourceLabel } from "../lib/updatePresentatio
 import { updaterStyles } from "../styles/updater.stylex";
 import { colors, motion, radii } from "../styles/tokens.stylex";
 
+const ReleaseNotes = lazy(() => import("./ReleaseNotes"));
+
 interface DesktopUpdaterPanelProps {
   snapshot: DesktopUpdateSnapshot;
   busy: boolean;
   onCheck: () => void | Promise<void>;
   onInstall: () => void | Promise<void>;
+  preview?: boolean;
 }
 
 export default function DesktopUpdaterPanel({
@@ -19,13 +23,14 @@ export default function DesktopUpdaterPanel({
   busy,
   onCheck,
   onInstall,
+  preview = false,
 }: DesktopUpdaterPanelProps) {
   const checking = snapshot.status === "checking";
   const downloading = snapshot.status === "downloading" || snapshot.status === "installing";
   const disabled = snapshot.status === "disabled" || checking || downloading;
 
   return (
-    <section {...stylex.props(styles.section)} aria-labelledby="desktop-updates-heading">
+    <section className="desktop-updater-panel" aria-labelledby="desktop-updates-heading">
       <div {...stylex.props(styles.heading)}>
         <div {...stylex.props(styles.titleRow)}>
           <Typography.Title id="desktop-updates-heading" level={5}>
@@ -33,16 +38,13 @@ export default function DesktopUpdaterPanel({
           </Typography.Title>
           <span {...stylex.props(styles.badge)}>
             <Sparkles size={13} aria-hidden="true" />
-            生产桌面版
+            {preview ? "开发预览" : "生产桌面版"}
           </span>
         </div>
-        <Typography.Paragraph type="secondary" {...stylex.props(styles.copy)}>
-          优先从 GitHub 检查和下载更新，连接失败时自动尝试 gh-proxy 加速源。
-        </Typography.Paragraph>
       </div>
 
       {snapshot.source && !checking && !downloading ? (
-        <Typography.Text type="secondary">当前来源：{updateSourceLabel(snapshot)}{snapshot.source === "proxy" ? "（可能存在缓存延迟）" : ""}</Typography.Text>
+        <Typography.Text type="secondary" className="update-panel-source">当前来源：{updateSourceLabel(snapshot)}{snapshot.source === "proxy" ? "（可能存在缓存延迟）" : ""}</Typography.Text>
       ) : null}
 
       {checking || downloading ? (
@@ -70,23 +72,15 @@ export default function DesktopUpdaterPanel({
       ) : null}
 
       {snapshot.status === "available" ? (
-        <Alert
-          showIcon
-          type="info"
-          message={`发现新版本 ${snapshot.version ?? ""}`}
-          description={snapshot.body || "暂无更新说明"}
-          action={
-            <Button
-              type="primary"
-              size="small"
-              icon={<Download size={14} />}
-              disabled={busy}
-              onClick={() => void onInstall()}
-            >
-              {busy ? "正在准备更新" : "下载并重启"}
-            </Button>
-          }
-        />
+        <Typography.Text strong>{`发现新版本 ${snapshot.version ?? ""}`}</Typography.Text>
+      ) : null}
+
+      {snapshot.status === "available" ? (
+        <div key={snapshot.version} className="update-notes-scroll" tabIndex={0} role="region" aria-label="更新日志">
+          <Suspense fallback={<Typography.Text>加载更新说明…</Typography.Text>}>
+            <ReleaseNotes body={snapshot.body} />
+          </Suspense>
+        </div>
       ) : null}
 
       {downloading ? (
@@ -102,16 +96,21 @@ export default function DesktopUpdaterPanel({
         <Alert showIcon type="error" message={snapshot.error || "更新失败"} />
       ) : null}
 
-      <Space>
+      <div className="update-panel-actions">
+        {snapshot.status === "available" ? (
+          <Button type="primary" icon={<Download size={15} />} disabled={busy || preview} onClick={() => void onInstall()}>
+            {busy ? "正在准备更新" : "下载并重启"}
+          </Button>
+        ) : null}
         <Button
           icon={<RefreshCw size={15} />}
           loading={checking}
-          disabled={disabled}
+          disabled={disabled || preview}
           onClick={() => void onCheck()}
         >
           检查更新
         </Button>
-      </Space>
+      </div>
     </section>
   );
 }

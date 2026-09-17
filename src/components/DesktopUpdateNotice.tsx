@@ -7,6 +7,8 @@ import { updateActivityLabel } from "../lib/updatePresentation";
 import { desktopChrome } from "../styles/desktop-chrome.stylex";
 import { colors, motion, radii, shadows } from "../styles/tokens.stylex";
 
+const ReleaseNotes = lazy(() => import("./ReleaseNotes"));
+
 interface DesktopUpdateNoticeProps {
   snapshot: DesktopUpdateSnapshot;
   busy: boolean;
@@ -51,9 +53,9 @@ export default function DesktopUpdateNotice({
       </div>
 
       {available ? (
-        <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} {...stylex.props(styles.copy)}>
-          {snapshot.body || "暂无更新说明"}
-        </Typography.Paragraph>
+        <Suspense fallback={<Typography.Text>加载更新摘要…</Typography.Text>}>
+          <ReleaseNotes body={snapshot.body} compact />
+        </Suspense>
       ) : null}
 
       {downloading && typeof snapshot.progress === "number" ? (
@@ -168,3 +170,4 @@ const styles = stylex.create({
     gap: "8px",
   },
 });
+import { lazy, Suspense } from "react";

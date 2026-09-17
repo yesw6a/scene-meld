@@ -1,0 +1,52 @@
+.studio-about-modal .ant-modal {
+  padding-bottom: 0;
+  max-width: calc(100vw - 32px);
+  margin-block: 16px;
+}
+.studio-about-modal .ant-modal-content,
+.studio-about-modal .ant-modal-container {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 32px);
+  overflow: hidden;
+}
+.studio-about-modal .ant-modal-body,
+.about-dialog-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+.about-dialog-content { gap: 12px; }
+.studio-about-modal .ant-modal-footer { flex: 0 0 auto; }
+.about-dialog-header { flex: 0 1 auto; min-height: 0; max-height: 32dvh; overflow: auto; padding-right: 24px; }
+.about-dialog-header h3 { margin-block: 0 4px; }
+.about-dialog-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; margin-top: 8px; font-size: 13px; }
+.about-dialog-info { font-size: 12px; margin-top: 8px; }
+.about-dialog-info summary { cursor: pointer; }
+.about-dialog-info p { margin: 8px 0 0; }
+.desktop-updater-panel { display: flex; flex-direction: column; min-height: 0; flex: 1 1 auto; gap: 10px; overflow: hidden; }
+.desktop-updater-panel > :not(.update-notes-scroll) { flex-shrink: 0; }
+.desktop-updater-panel h5 { margin: 0; }
+.update-panel-source { font-size: 12px; }
+.update-notes-scroll {
+  min-height: 0;
+  max-height: 44dvh;
+  flex: 1 1 auto;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 4px 12px 4px 2px;
+  outline-offset: -2px;
+}
+.update-panel-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); }
+.update-preview { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow: hidden; gap: 8px; }
+.update-preview-controls { flex-shrink: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; }
+@media (max-height: 560px) {
+  .studio-about-modal .ant-modal-content, .studio-about-modal .ant-modal-container { padding: 12px 16px; }
+  .about-dialog-content, .desktop-updater-panel { gap: 6px; }
+  .about-dialog-header { max-height: 22dvh; }
+  .about-dialog-header > :first-child > span { display: none; }
+  .update-panel-actions { padding-top: 6px; }
+}

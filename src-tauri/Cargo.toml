@@ -1,6 +1,6 @@
 [package]
 name = "scenemeld"
-version = "1.11.0"
+version = "1.11.1"
 description = "SceneMeld Desktop native shell"
 authors = ["SceneMeld contributors"]
 edition = "2021"

@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import * as stylex from "@stylexjs/stylex";
-import { Divider, Modal, Space, Tag, Typography } from "antd";
+import { Button, Modal, Tag, Typography } from "antd";
 
 import packageInfo from "../../package.json";
 import DesktopUpdaterPanel from "./DesktopUpdaterPanel";
@@ -8,6 +8,11 @@ import BrandMark from "./BrandMark";
 import type { DesktopUpdateSnapshot } from "../hooks/useDesktopUpdater";
 import { isDesktopRuntime } from "../lib/runtime";
 import { colors, radii } from "../styles/tokens.stylex";
+import "./about-updates.css";
+
+const UpdatePreview = import.meta.env.DEV
+  ? lazy(() => import("./dev/UpdatePreview"))
+  : null;
 
 interface AboutDialogProps {
   open: boolean;
@@ -56,12 +61,13 @@ export default function AboutDialog({
       title={null}
       open={open}
       onCancel={onClose}
-      footer={null}
+      footer={<Button onClick={onClose}>关闭</Button>}
       centered
-      width="min(460px, calc(100vw - 32px))"
+      width="min(680px, calc(100vw - 32px))"
       rootClassName="studio-about-modal"
     >
-      <div {...stylex.props(styles.content)}>
+      <div className="about-dialog-content">
+        <div className="about-dialog-header">
         <div {...stylex.props(styles.brand)}>
           <span {...stylex.props(styles.mark)}>
             <BrandMark size={60} title="SceneMeld" />
@@ -72,68 +78,49 @@ export default function AboutDialog({
           </div>
         </div>
 
-        <div {...stylex.props(styles.meta)}>
-          <div {...stylex.props(styles.metaRow)}>
-            <span>版本</span>
-            <Tag>{version}</Tag>
-          </div>
-          <div {...stylex.props(styles.metaRow)}>
-            <span>运行环境</span>
+        <div className="about-dialog-meta">
+            <span>当前版本 <Tag>{version}</Tag></span>
             <Tag color={desktop ? "blue" : "default"}>
               {desktop ? "SceneMeld Desktop" : "SceneMeld Web"}
             </Tag>
-          </div>
-          <div {...stylex.props(styles.metaRow)}>
-            <span>开源仓库</span>
             <Typography.Link
               href="https://github.com/yesw6a/scene-meld"
               target="_blank"
               rel="noreferrer noopener"
             >
-              github.com/yesw6a/scene-meld
+              开源仓库
             </Typography.Link>
-          </div>
         </div>
 
+        <details className="about-dialog-info">
+          <summary>关于 SceneMeld 与数据说明</summary>
         <Typography.Paragraph type="secondary" {...stylex.props(styles.description)}>
           SceneMeld 默认尝试将创作记录保存在当前设备，并把请求发送到你配置的兼容 Images API Endpoint。
           本项目不提供图片请求中转服务；目标 Endpoint 的处理方式由其运营者决定。
         </Typography.Paragraph>
+          <p>创作记录不是永久备份。SceneMeld 是独立开源项目，不代表或隶属于任何模型提供商或 Endpoint 运营者。</p>
+          <p>SceneMeld © 2026 contributors</p>
+        </details>
+        </div>
 
-        {desktop ? (
-          <>
-            <Divider />
+        {UpdatePreview ? (
+          <Suspense fallback={<Typography.Text>加载更新预览…</Typography.Text>}>
+            <UpdatePreview />
+          </Suspense>
+        ) : desktop ? (
             <DesktopUpdaterPanel
               snapshot={desktopUpdateSnapshot}
               busy={updateBusy}
               onCheck={onCheckForUpdates}
               onInstall={onInstallUpdate}
             />
-          </>
         ) : null}
-
-        <Space direction="vertical" size={2} {...stylex.props(styles.footnote)}>
-          <Typography.Text type="secondary">
-            {desktop ? "桌面版版本号来自应用运行时；" : "Web 版版本号来自构建信息；"}
-            创作记录不是永久备份。
-          </Typography.Text>
-          <Typography.Text type="secondary">
-            SceneMeld 是独立开源项目，不代表或隶属于任何模型提供商或 Endpoint 运营者。
-          </Typography.Text>
-          <Typography.Text type="secondary">SceneMeld © 2026 contributors</Typography.Text>
-        </Space>
       </div>
     </Modal>
   );
 }
 
 const styles = stylex.create({
-  content: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "18px",
-    paddingTop: "10px",
-  },
   brand: {
     display: "flex",
     alignItems: "center",
@@ -155,30 +142,8 @@ const styles = stylex.create({
     flexDirection: "column",
     gap: "3px",
   },
-  meta: {
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    padding: "12px",
-    backgroundColor: colors.glassSubtle,
-    borderWidth: "1px",
-    borderStyle: "solid",
-    borderColor: colors.glassBorder,
-    borderRadius: radii.medium,
-  },
-  metaRow: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: "12px",
-    color: colors.muted,
-    fontSize: "13px",
-  },
   description: {
     margin: 0,
     lineHeight: 1.65,
-  },
-  footnote: {
-    fontSize: "12px",
   },
 });
