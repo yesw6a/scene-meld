@@ -15,6 +15,8 @@ import {
 import BrandMark from "./BrandMark";
 import type { DesktopUpdateSnapshot } from "../hooks/useDesktopUpdater";
 import { isDesktopRuntime } from "../lib/runtime";
+import { updateActivityLabel } from "../lib/updatePresentation";
+import { updaterStyles } from "../styles/updater.stylex";
 import { desktopChrome } from "../styles/desktop-chrome.stylex";
 import { colors, motion, radii } from "../styles/tokens.stylex";
 
@@ -258,7 +260,7 @@ function UpdateChip({
     return null;
   }
 
-  const retrying = snapshot.status === "checking";
+  const active = ["checking", "downloading", "installing"].includes(snapshot.status);
   const tone =
     presentation.tone === "available"
       ? styles.updateChipAvailable
@@ -285,10 +287,10 @@ function UpdateChip({
         {...stylex.props(styles.updateChip, tone)}
         aria-label={presentation.ariaLabel}
         aria-live={snapshot.status === "available" || snapshot.status === "error" ? "polite" : "off"}
-        disabled={retrying}
+        aria-busy={active}
         onClick={handleClick}
       >
-        <span {...stylex.props(styles.updateChipIcon)} aria-hidden="true">
+        <span {...stylex.props(styles.updateChipIcon, active && updaterStyles.spinning)} aria-hidden="true">
           {presentation.icon}
         </span>
         <span {...stylex.props(styles.updateChipLabel)}>{presentation.label}</span>
@@ -316,26 +318,26 @@ function getUpdatePresentation(snapshot: DesktopUpdateSnapshot): {
     case "checking":
       return {
         icon: <LoaderCircle size={14} aria-hidden="true" />,
-        label: "检查更新中",
-        tooltip: "正在检查桌面更新",
-        ariaLabel: "正在检查桌面更新",
+        label: snapshot.source === "proxy" ? "加速源检查中" : "检查更新中",
+        tooltip: updateActivityLabel(snapshot),
+        ariaLabel: `${updateActivityLabel(snapshot)}，打开更新详情`,
         tone: "busy",
       };
     case "downloading":
       return {
         icon: <LoaderCircle size={14} aria-hidden="true" />,
-        label:
+        label: snapshot.phase === "verifying" ? "校验更新包中" :
           typeof snapshot.progress === "number"
             ? `下载更新 ${snapshot.progress}%`
             : "下载更新中",
-        tooltip: "打开更新详情查看进度",
-        ariaLabel: "桌面更新正在下载，打开更新详情",
+        tooltip: updateActivityLabel(snapshot),
+        ariaLabel: `${updateActivityLabel(snapshot)}，打开更新详情`,
         tone: "busy",
       };
     case "installing":
       return {
         icon: <LoaderCircle size={14} aria-hidden="true" />,
-        label: "准备重启",
+        label: "安装更新中",
         tooltip: "更新即将完成",
         ariaLabel: "桌面更新准备重启",
         tone: "busy",

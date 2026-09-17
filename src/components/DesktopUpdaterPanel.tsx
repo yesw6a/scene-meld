@@ -1,8 +1,10 @@
 import * as stylex from "@stylexjs/stylex";
 import { Alert, Button, Progress, Space, Typography } from "antd";
-import { CheckCircle2, Download, RefreshCw, Sparkles } from "lucide-react";
+import { CheckCircle2, Download, LoaderCircle, RefreshCw, Sparkles } from "lucide-react";
 
 import type { DesktopUpdateSnapshot } from "../hooks/useDesktopUpdater";
+import { updateActivityLabel, updateSourceLabel } from "../lib/updatePresentation";
+import { updaterStyles } from "../styles/updater.stylex";
 import { colors, motion, radii } from "../styles/tokens.stylex";
 
 interface DesktopUpdaterPanelProps {
@@ -35,9 +37,20 @@ export default function DesktopUpdaterPanel({
           </span>
         </div>
         <Typography.Paragraph type="secondary" {...stylex.props(styles.copy)}>
-          桌面版从项目配置的 GitHub Releases 源检查更新；Web 版和开发态不加载桌面更新。
+          优先从 GitHub 检查和下载更新，连接失败时自动尝试 gh-proxy 加速源。
         </Typography.Paragraph>
       </div>
+
+      {snapshot.source && !checking && !downloading ? (
+        <Typography.Text type="secondary">当前来源：{updateSourceLabel(snapshot)}{snapshot.source === "proxy" ? "（可能存在缓存延迟）" : ""}</Typography.Text>
+      ) : null}
+
+      {checking || downloading ? (
+        <div role="status" aria-live="polite" {...stylex.props(updaterStyles.activity)}>
+          <span {...stylex.props(updaterStyles.spinning)} aria-hidden="true"><LoaderCircle size={16} /></span>
+          <Typography.Text>{checking ? updateActivityLabel(snapshot) : snapshot.phase === "verifying" ? "下载完成，正在校验签名" : snapshot.status === "installing" ? "正在安装更新，完成后重启" : `正在下载 · ${updateSourceLabel(snapshot)}`}</Typography.Text>
+        </div>
+      ) : null}
 
       {snapshot.status === "disabled" ? (
         <Alert showIcon type="info" message="当前运行环境不提供生产桌面更新。" />
@@ -79,9 +92,9 @@ export default function DesktopUpdaterPanel({
       {downloading ? (
         <div {...stylex.props(styles.progressBlock)}>
           <Typography.Text>
-            {snapshot.status === "installing" ? "正在准备重启…" : "正在下载更新…"}
+            {updateActivityLabel(snapshot)}
           </Typography.Text>
-          <Progress percent={snapshot.progress} status={snapshot.status === "installing" ? "active" : undefined} />
+          {typeof snapshot.progress === "number" ? <Progress percent={snapshot.progress} status={snapshot.status === "installing" ? "active" : undefined} /> : null}
         </div>
       ) : null}
 

@@ -6,6 +6,7 @@ mod reasoning;
 mod request_state;
 mod secrets;
 mod types;
+mod updater;
 
 use planning_stream::PlanningProgressEvent;
 use request_state::RequestState;
@@ -188,6 +189,7 @@ pub fn run() {
             }
         })
         .manage(RequestState::default())
+        .manage(updater::UpdateState::default())
         .invoke_handler(tauri::generate_handler![
             generate_image,
             edit_image,
@@ -204,6 +206,8 @@ pub fn run() {
             save_conversation_api_key,
             delete_conversation_api_key,
             log_frontend_error,
+            updater::check_desktop_update,
+            updater::install_desktop_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running SceneMeld Desktop");

@@ -19,6 +19,10 @@ export interface DesktopUpdateSnapshot {
   progress?: number;
   error?: string;
   checkedAt?: number;
+  source?: "github" | "proxy";
+  phase?: "checking" | "downloading" | "verifying" | "installing";
+  retrying?: boolean;
+  downloaded?: number;
 }
 
 interface UseDesktopUpdaterOptions {
@@ -31,95 +35,123 @@ interface DesktopUpdateController {
   installUpdate: () => Promise<void>;
 }
 
-type UpdaterHandle = import("@tauri-apps/plugin-updater").Update;
+interface UpdateEvent {
+  phase: NonNullable<DesktopUpdateSnapshot["phase"]>;
+  source: "github" | "proxy";
+  retrying: boolean;
+  downloaded: number;
+  total: number | null;
+}
+
+interface CheckResult {
+  currentVersion: string;
+  version: string | null;
+  body: string | null;
+  source: "github" | "proxy";
+}
 
 export default function useDesktopUpdater({ busy }: UseDesktopUpdaterOptions): DesktopUpdateController {
   const enabled = isDesktopRuntime() && import.meta.env.PROD;
-  const updateRef = useRef<UpdaterHandle | null>(null);
+  const available = useRef(false);
+  const operation = useRef(false);
+  const generation = useRef(0);
+  const mounted = useRef(true);
   const checkStarted = useRef(false);
   const [snapshot, setSnapshot] = useState<DesktopUpdateSnapshot>(() => ({
     status: enabled ? "idle" : "disabled",
   }));
 
   const checkForUpdates = useCallback(async () => {
-    if (!enabled) {
+    if (!enabled || operation.current) {
       return;
     }
 
-    setSnapshot((current) => ({
-      ...current,
+    operation.current = true;
+    available.current = false;
+    const id = ++generation.current;
+    setSnapshot({
       status: "checking",
-      error: undefined,
-      progress: undefined,
-    }));
+      source: "github",
+      phase: "checking",
+    });
 
     try {
-      const [{ check }, { getVersion }] = await Promise.all([
-        import("@tauri-apps/plugin-updater"),
-        import("@tauri-apps/api/app"),
-      ]);
-      const [update, currentVersion] = await Promise.all([check(), getVersion()]);
-
-      if (!update) {
-        updateRef.current = null;
-        setSnapshot({ status: "idle", currentVersion, checkedAt: Date.now() });
-        return;
-      }
-
-      updateRef.current = update;
+      const { invoke, Channel } = await import("@tauri-apps/api/core");
+      const onEvent = new Channel<UpdateEvent>();
+      onEvent.onmessage = (event) => {
+        if (mounted.current && generation.current === id) setSnapshot((current) => ({ ...current, ...event }));
+      };
+      const result = await invoke<CheckResult>("check_desktop_update", { onEvent });
+      if (!mounted.current || generation.current !== id) return;
+      available.current = Boolean(result.version);
       setSnapshot({
-        status: "available",
-        currentVersion: update.currentVersion || currentVersion,
-        version: update.version,
-        body: update.body,
+        status: result.version ? "available" : "idle",
+        currentVersion: result.currentVersion,
+        version: result.version ?? undefined,
+        body: result.body ?? undefined,
+        source: result.source,
         checkedAt: Date.now(),
       });
     } catch (error) {
+      if (!mounted.current || generation.current !== id) return;
       setSnapshot((current) => ({
         ...current,
         status: "error",
         error: formatUpdaterError(error),
         checkedAt: Date.now(),
       }));
+    } finally {
+      if (generation.current === id) generation.current++;
+      operation.current = false;
     }
   }, [enabled]);
 
   const installUpdate = useCallback(async () => {
-    const update = updateRef.current;
-    if (!enabled || !update || busy) {
+    if (!enabled || !available.current || busy || operation.current) {
       return;
     }
 
-    setSnapshot((current) => ({ ...current, status: "downloading", progress: 0, error: undefined }));
+    operation.current = true;
+    available.current = false;
+    const id = ++generation.current;
+    setSnapshot((current) => ({ ...current, status: "downloading", phase: "downloading", progress: undefined, downloaded: 0, retrying: false, error: undefined }));
 
     try {
-      let downloaded = 0;
-      let total = 0;
-      await update.download((event) => {
-        if (event.event === "Started") {
-          total = event.data.contentLength ?? 0;
-          setSnapshot((current) => ({ ...current, progress: total ? 0 : undefined }));
-        } else if (event.event === "Progress") {
-          downloaded += event.data.chunkLength;
-          setSnapshot((current) => ({
-            ...current,
-            progress: total ? Math.min(100, Math.round((downloaded / total) * 100)) : undefined,
-          }));
-        }
-      });
-
-      setSnapshot((current) => ({ ...current, status: "installing", progress: 100 }));
-      await update.install();
+      const { invoke, Channel } = await import("@tauri-apps/api/core");
+      const onEvent = new Channel<UpdateEvent>();
+      onEvent.onmessage = (event) => {
+        if (!mounted.current || generation.current !== id) return;
+        setSnapshot((current) => ({
+          ...current,
+          ...event,
+          status: event.phase === "installing" ? "installing" : "downloading",
+          progress: event.phase === "installing" ? 100
+            : event.phase === "verifying" ? current.progress
+            : event.total ? Math.min(99, Math.floor(event.downloaded / event.total * 100)) : undefined,
+          downloaded: event.phase === "verifying" ? current.downloaded : event.downloaded,
+        }));
+      };
+      await invoke("install_desktop_update", { onEvent });
+      if (!mounted.current || generation.current !== id) return;
       const { relaunch } = await import("@tauri-apps/plugin-process");
       await relaunch();
     } catch (error) {
+      if (!mounted.current || generation.current !== id) return;
       setSnapshot((current) => ({
         ...current,
         status: "error",
         error: formatUpdaterError(error),
       }));
+    } finally {
+      if (generation.current === id) generation.current++;
+      operation.current = false;
     }
   }, [busy, enabled]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
     if (!enabled || checkStarted.current) {
@@ -134,6 +166,7 @@ export default function useDesktopUpdater({ busy }: UseDesktopUpdaterOptions): D
 }
 
 function formatUpdaterError(error: unknown): string {
+  if (typeof error === "string" && error.trim()) return error;
   if (error instanceof Error && error.message) {
     return error.message;
   }

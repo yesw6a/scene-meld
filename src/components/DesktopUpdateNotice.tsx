@@ -3,6 +3,7 @@ import { Button, Progress, Typography } from "antd";
 import { AlertCircle, Download, RefreshCw, Sparkles } from "lucide-react";
 
 import type { DesktopUpdateSnapshot } from "../hooks/useDesktopUpdater";
+import { updateActivityLabel } from "../lib/updatePresentation";
 import { desktopChrome } from "../styles/desktop-chrome.stylex";
 import { colors, motion, radii, shadows } from "../styles/tokens.stylex";
 
@@ -38,14 +39,12 @@ export default function DesktopUpdateNotice({
           {failed ? <AlertCircle size={16} /> : <Sparkles size={16} />}
         </span>
         <div {...stylex.props(styles.heading)}>
-          <strong>{failed ? "桌面更新检查失败" : "桌面有新版本"}</strong>
+          <strong>{failed ? "桌面更新失败" : "桌面有新版本"}</strong>
           <Typography.Text type="secondary">
             {available
               ? `版本 ${snapshot.version ?? "待确认"}`
               : downloading
-                ? snapshot.status === "installing"
-                  ? "正在准备重启"
-                  : "正在下载更新"
+                ? updateActivityLabel(snapshot)
                 : "可以稍后重试"}
           </Typography.Text>
         </div>
@@ -57,7 +56,7 @@ export default function DesktopUpdateNotice({
         </Typography.Paragraph>
       ) : null}
 
-      {downloading ? (
+      {downloading && typeof snapshot.progress === "number" ? (
         <Progress
           percent={snapshot.progress}
           size="small"
