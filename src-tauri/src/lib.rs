@@ -1,4 +1,5 @@
 mod http;
+mod network;
 mod files;
 mod planning;
 mod planning_stream;
@@ -10,7 +11,8 @@ mod updater;
 
 use planning_stream::PlanningProgressEvent;
 use request_state::RequestState;
-use tauri::{ipc::Channel, State};
+use network::NetworkState;
+use tauri::{ipc::Channel, Manager, State};
 use types::{
     CommandError, ConversationRequest, ConversationResponse, ImagePromptPlanningRequest,
     ImageRequest, ImageResponse, ModelListRequest, ModelListResponse, PromptOptimizationRequest,
@@ -21,16 +23,18 @@ use types::{
 async fn generate_image(
     request: ImageRequest,
     state: State<'_, RequestState>,
+    network: State<'_, NetworkState>,
 ) -> Result<ImageResponse, CommandError> {
-    run_image_request(request, state, false).await
+    run_image_request(request, state, network.snapshot()?, false).await
 }
 
 #[tauri::command]
 async fn edit_image(
     request: ImageRequest,
     state: State<'_, RequestState>,
+    network: State<'_, NetworkState>,
 ) -> Result<ImageResponse, CommandError> {
-    run_image_request(request, state, true).await
+    run_image_request(request, state, network.snapshot()?, true).await
 }
 
 #[tauri::command]
@@ -38,10 +42,12 @@ async fn plan_storyboard(
     request: ConversationRequest,
     on_event: Channel<PlanningProgressEvent>,
     state: State<'_, RequestState>,
+    network: State<'_, NetworkState>,
 ) -> Result<ConversationResponse, CommandError> {
+    let proxy = network.snapshot()?;
     let mut cancelled = state.begin(&request.request_id)?;
     let result = tokio::select! {
-        response = http::plan_storyboard(&request, &on_event) => response,
+        response = http::plan_storyboard(&request, &on_event, &proxy) => response,
         _ = &mut cancelled => Err(CommandError::cancelled()),
     };
     state.finish(&request.request_id)?;
@@ -53,10 +59,12 @@ async fn plan_image_prompts(
     request: ImagePromptPlanningRequest,
     on_event: Channel<PlanningProgressEvent>,
     state: State<'_, RequestState>,
+    network: State<'_, NetworkState>,
 ) -> Result<ConversationResponse, CommandError> {
+    let proxy = network.snapshot()?;
     let mut cancelled = state.begin(&request.request_id)?;
     let result = tokio::select! {
-        response = http::plan_image_prompts(&request, &on_event) => response,
+        response = http::plan_image_prompts(&request, &on_event, &proxy) => response,
         _ = &mut cancelled => Err(CommandError::cancelled()),
     };
     state.finish(&request.request_id)?;
@@ -67,10 +75,12 @@ async fn plan_image_prompts(
 async fn optimize_prompt(
     request: PromptOptimizationRequest,
     state: State<'_, RequestState>,
+    network: State<'_, NetworkState>,
 ) -> Result<PromptOptimizationResponse, CommandError> {
+    let proxy = network.snapshot()?;
     let mut cancelled = state.begin(&request.request_id)?;
     let result = tokio::select! {
-        response = http::optimize_prompt(&request) => response,
+        response = http::optimize_prompt(&request, &proxy) => response,
         _ = &mut cancelled => Err(CommandError::cancelled()),
     };
     state.finish(&request.request_id)?;
@@ -80,22 +90,24 @@ async fn optimize_prompt(
 #[tauri::command]
 async fn list_conversation_models(
     request: ModelListRequest,
+    network: State<'_, NetworkState>,
 ) -> Result<ModelListResponse, CommandError> {
-    http::list_conversation_models(&request).await
+    http::list_conversation_models(&request, &network.snapshot()?).await
 }
 
 async fn run_image_request(
     request: ImageRequest,
     state: State<'_, RequestState>,
+    proxy: network::ProxySettings,
     edit: bool,
 ) -> Result<ImageResponse, CommandError> {
     let mut cancelled = state.begin(&request.request_id)?;
     let result = tokio::select! {
         response = async {
             if edit {
-                http::edit(&request).await
+                http::edit(&request, &proxy).await
             } else {
-                http::generate(&request).await
+                http::generate(&request, &proxy).await
             }
         } => response,
         _ = &mut cancelled => Err(CommandError::cancelled()),
@@ -169,6 +181,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .setup(|app| {
+            app.manage(NetworkState::load(app.path().app_config_dir()?.join("network-proxy.json")));
             #[cfg(desktop)]
             {
                 app.handle().plugin(tauri_plugin_process::init())?;
@@ -206,6 +219,8 @@ pub fn run() {
             save_conversation_api_key,
             delete_conversation_api_key,
             log_frontend_error,
+            network::load_proxy_settings,
+            network::save_proxy_settings,
             updater::check_desktop_update,
             updater::install_desktop_update,
         ])

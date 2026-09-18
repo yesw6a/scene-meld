@@ -14,6 +14,7 @@ use tauri::ipc::Channel;
 use url::Url;
 
 use crate::{
+    network::ProxySettings,
     planning_stream::{request_content, PlanningProgressEvent, PlanningRequest},
     reasoning::{
         classify_unsupported_reasoning, merge_notice, prepare_reasoning_request,
@@ -99,10 +100,11 @@ struct ValidatedAttachment {
     mime_type: &'static str,
 }
 
-pub async fn generate(request: &ImageRequest) -> Result<ImageResponse, CommandError> {
+pub async fn generate(request: &ImageRequest, proxy: &ProxySettings) -> Result<ImageResponse, CommandError> {
     validate_common_request(request)?;
     let endpoint = build_endpoint(&request.base_url, "images/generations")?;
-    let client = authenticated_client()?;
+    let client = authenticated_client(proxy)?;
+    let image_client = remote_image_client(proxy)?;
     let response = client
         .post(endpoint.clone())
         .bearer_auth(&request.api_key)
@@ -117,10 +119,10 @@ pub async fn generate(request: &ImageRequest) -> Result<ImageResponse, CommandEr
         .await
         .map_err(|_| network_error(&endpoint))?;
 
-    parse_image_response(response, &endpoint, &request.api_key).await
+    parse_image_response(response, &endpoint, &request.api_key, &image_client).await
 }
 
-pub async fn edit(request: &ImageRequest) -> Result<ImageResponse, CommandError> {
+pub async fn edit(request: &ImageRequest, proxy: &ProxySettings) -> Result<ImageResponse, CommandError> {
     validate_common_request(request)?;
     let endpoint = build_endpoint(&request.base_url, "images/edits")?;
     let attachments = validate_attachments(&request.attachments)?;
@@ -141,7 +143,8 @@ pub async fn edit(request: &ImageRequest) -> Result<ImageResponse, CommandError>
         form = form.part("image[]", part);
     }
 
-    let client = authenticated_client()?;
+    let client = authenticated_client(proxy)?;
+    let image_client = remote_image_client(proxy)?;
     let response = client
         .post(endpoint.clone())
         .bearer_auth(&request.api_key)
@@ -150,12 +153,13 @@ pub async fn edit(request: &ImageRequest) -> Result<ImageResponse, CommandError>
         .await
         .map_err(|_| network_error(&endpoint))?;
 
-    parse_image_response(response, &endpoint, &request.api_key).await
+    parse_image_response(response, &endpoint, &request.api_key, &image_client).await
 }
 
 pub async fn plan_storyboard(
     request: &ConversationRequest,
     on_event: &Channel<PlanningProgressEvent>,
+    proxy: &ProxySettings,
 ) -> Result<ConversationResponse, CommandError> {
     if request.api_key.trim().is_empty() || request.api_key.len() > 16_384 {
         return Err(CommandError::new("API Key 无效。", "INVALID_API_KEY"));
@@ -202,7 +206,7 @@ pub async fn plan_storyboard(
     if request.supports_structured_output {
         body["response_format"] = json!({ "type": "json_object" });
     }
-    let client = authenticated_client()?;
+    let client = authenticated_client(proxy)?;
     let content = request_content(PlanningRequest {
         client: &client,
         endpoint: endpoint.as_str(),
@@ -222,12 +226,14 @@ pub async fn plan_storyboard(
 pub async fn plan_image_prompts(
     request: &ImagePromptPlanningRequest,
     on_event: &Channel<PlanningProgressEvent>,
+    proxy: &ProxySettings,
 ) -> Result<ConversationResponse, CommandError> {
-    crate::planning::plan_image_prompts(request, on_event).await
+    crate::planning::plan_image_prompts(request, on_event, proxy).await
 }
 
 pub async fn optimize_prompt(
     request: &PromptOptimizationRequest,
+    proxy: &ProxySettings,
 ) -> Result<PromptOptimizationResponse, CommandError> {
     if request.api_key.trim().is_empty() || request.api_key.len() > 16_384 {
         return Err(CommandError::new("API Key 无效。", "INVALID_API_KEY"));
@@ -283,7 +289,7 @@ pub async fn optimize_prompt(
         &request.model,
         request.reasoning_effort.as_deref(),
     )?;
-    let client = authenticated_client()?;
+    let client = authenticated_client(proxy)?;
     let (mut status, mut bytes) = send_prompt_optimization_request(
         &client,
         &endpoint,
@@ -389,12 +395,13 @@ fn parse_prompt_optimization(content: &str) -> Result<PromptOptimizationResponse
 
 pub async fn list_conversation_models(
     request: &ModelListRequest,
+    proxy: &ProxySettings,
 ) -> Result<ModelListResponse, CommandError> {
     if request.api_key.trim().is_empty() || request.api_key.len() > 16_384 {
         return Err(CommandError::new("API Key 无效。", "INVALID_API_KEY"));
     }
     let endpoint = build_endpoint(&request.base_url, "models")?;
-    let client = authenticated_client()?;
+    let client = authenticated_client(proxy)?;
     let response = client
         .get(endpoint.clone())
         .bearer_auth(&request.api_key)
@@ -536,6 +543,7 @@ async fn parse_image_response(
     response: Response,
     endpoint: &Url,
     api_key: &str,
+    image_client: &Client,
 ) -> Result<ImageResponse, CommandError> {
     let status = response.status();
     let bytes = read_limited(response, MAX_JSON_BYTES, "RESPONSE_TOO_LARGE").await?;
@@ -592,7 +600,7 @@ async fn parse_image_response(
     }
 
     if let Some(remote_url) = image.url.filter(|value| !value.is_empty()) {
-        let (image_bytes, mime_type) = download_remote_image(&remote_url, endpoint).await?;
+        let (image_bytes, mime_type) = download_remote_image(&remote_url, endpoint, image_client).await?;
         return Ok(ImageResponse {
             image: BASE64.encode(image_bytes),
             mime_type,
@@ -607,14 +615,13 @@ async fn parse_image_response(
     ))
 }
 
-async fn download_remote_image(value: &str, endpoint: &Url) -> Result<(Vec<u8>, String), CommandError> {
+async fn download_remote_image(value: &str, endpoint: &Url, client: &Client) -> Result<(Vec<u8>, String), CommandError> {
     let image_url = resolve_remote_image_url(value, endpoint)?;
-    let client = remote_image_client()?;
     let response = client
         .get(image_url)
         .send()
         .await
-        .map_err(|_| CommandError::new("无法下载目标 API 返回的图片 URL。", "REMOTE_IMAGE_DOWNLOAD_ERROR"))?;
+        .map_err(|_| CommandError::new("无法下载目标 API 返回的图片 URL，请检查网络与代理设置。", "REMOTE_IMAGE_DOWNLOAD_ERROR"))?;
     let status = response.status();
     if !status.is_success() {
         return Err(CommandError::with_status(
@@ -676,16 +683,16 @@ pub(crate) async fn read_limited(
     Ok(bytes)
 }
 
-pub(crate) fn authenticated_client() -> Result<Client, CommandError> {
-    Client::builder()
+pub(crate) fn authenticated_client(proxy: &ProxySettings) -> Result<Client, CommandError> {
+    proxy.client_builder()?
         .redirect(Policy::none())
         .timeout(Duration::from_secs(300))
         .build()
         .map_err(|_| CommandError::new("无法初始化桌面网络客户端。", "HTTP_CLIENT_ERROR"))
 }
 
-fn remote_image_client() -> Result<Client, CommandError> {
-    Client::builder()
+fn remote_image_client(proxy: &ProxySettings) -> Result<Client, CommandError> {
+    proxy.client_builder()?
         .redirect(Policy::custom(|attempt| {
             if attempt.previous().len() >= 5 {
                 return attempt.error("too many image redirects");
@@ -822,7 +829,7 @@ fn validate_advertised_mime(value: Option<&str>, detected: &str) -> Result<(), C
 
 pub(crate) fn network_error(endpoint: &Url) -> CommandError {
     CommandError::new(
-        format!("桌面端无法直接连接 {}，请检查网络、HTTPS 与 Endpoint 配置。", endpoint.host_str().unwrap_or("目标 API")),
+        format!("桌面端无法连接 {}，请检查网络、代理设置、HTTPS 与 Endpoint 配置。", endpoint.host_str().unwrap_or("目标 API")),
         "NETWORK_ERROR",
     )
 }

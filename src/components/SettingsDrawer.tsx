@@ -27,6 +27,8 @@ import {
 import { isDesktopRuntime } from "../lib/runtime";
 import { listConversationModels } from "../lib/conversation-models";
 import ConnectionSettingsSection from "./ConnectionSettingsSection";
+import NetworkProxySection from "./NetworkProxySection";
+import { useProxySettings } from "../hooks/useProxySettings";
 import { DEFAULT_CONVERSATION_MODEL, IMAGE_MODEL, type ConversationSettings, type GenerationSettings } from "../types";
 import { colors, motion, radii } from "../styles/tokens.stylex";
 
@@ -62,7 +64,7 @@ export default function SettingsDrawer({
   onReset,
   onClearHistory,
 }: SettingsDrawerProps) {
-  const { modal } = AntdApp.useApp();
+  const { modal, message } = AntdApp.useApp();
   const [draft, setDraft] = useState(settings);
   const [endpointError, setEndpointError] = useState<string>();
   const [conversationEndpointError, setConversationEndpointError] = useState<string>();
@@ -73,10 +75,12 @@ export default function SettingsDrawer({
   const [modelError, setModelError] = useState<string>();
   const independentConversationDraft = useRef<ConversationCredentialDraft | null>(null);
   const desktop = isDesktopRuntime();
+  const proxy = useProxySettings(open && section === "connection" && desktop);
   const dataOnly = section === "data";
   const requestEndpoint = previewGenerationEndpoint(draft.baseUrl);
   const requestHost = endpointHostLabel(draft.baseUrl, "");
-  const hasUnsavedChanges = !dataOnly && JSON.stringify(draft) !== JSON.stringify(settings);
+  const connectionDirty = !dataOnly && JSON.stringify(draft) !== JSON.stringify(settings);
+  const hasUnsavedChanges = connectionDirty || proxy.dirty;
 
   useEffect(() => {
     if (open) {
@@ -198,6 +202,20 @@ export default function SettingsDrawer({
       return;
     }
 
+    if (section === "connection" && proxy.dirty && !connectionDirty) {
+      setSaving(true);
+      setFormError(undefined);
+      try {
+        await proxy.save();
+        void message.success("代理设置已保存，对新操作生效。");
+      } catch (error) {
+        setFormError(error instanceof Error ? error.message : "代理设置保存失败。");
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+
     if (section === "workspace") {
       setFormError(undefined);
       setConversationEndpointError(undefined);
@@ -271,7 +289,10 @@ export default function SettingsDrawer({
     setFormError(undefined);
     setSaving(true);
     try {
+      if (proxy.dirty) await proxy.save();
       await onSave(trimmed);
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "设置保存失败，请重试。");
     } finally {
       setSaving(false);
     }
@@ -334,15 +355,15 @@ export default function SettingsDrawer({
       width={section === "connection" ? "min(800px, 100vw)" : "min(420px, 100vw)"}
       open={open}
       rootClassName={`studio-glass-drawer${section === "connection" ? " studio-connection-drawer" : ""}`}
-      onClose={onClose}
+      onClose={() => { if (!saving) onClose(); }}
       footer={
         <div {...stylex.props(styles.footer)}>
           {!dataOnly ? (
             <span aria-live="polite" {...stylex.props(styles.saveStatus, hasUnsavedChanges && styles.saveStatusDirty)}>
-              {hasUnsavedChanges ? "有未保存的更改" : "设置已保存"}
+              {proxy.loading ? "正在读取设置…" : proxy.error ? "代理设置需要处理" : hasUnsavedChanges ? "有未保存的更改" : "设置已保存"}
             </span>
           ) : null}
-          <Button className={stylex.props(styles.footerButton).className} onClick={onClose}>
+          <Button className={stylex.props(styles.footerButton).className} disabled={saving} onClick={onClose}>
             {dataOnly ? "关闭" : "取消"}
           </Button>
           {!dataOnly ? (
@@ -350,7 +371,7 @@ export default function SettingsDrawer({
               type="primary"
               icon={<Save size={16} />}
               loading={saving}
-              disabled={!hasUnsavedChanges}
+              disabled={!hasUnsavedChanges || proxy.loading}
               className={stylex.props(styles.footerButton).className}
               onClick={() => void handleSave()}
             >
@@ -362,7 +383,7 @@ export default function SettingsDrawer({
       }
     >
       <div {...stylex.props(styles.content)}>
-        <Form layout="vertical" requiredMark="optional">
+        <Form layout="vertical" requiredMark="optional" disabled={saving}>
           {formError ? <Alert type="error" showIcon message={formError} /> : null}
 
           {section === "connection" ? (
@@ -377,12 +398,27 @@ export default function SettingsDrawer({
               onUpdate={updateDraft}
               onUpdateConversation={updateConversation}
               onConnectionModeChange={handleConnectionModeChange}
-              hasUnsavedChanges={hasUnsavedChanges}
+              hasUnsavedChanges={connectionDirty}
               modelOptions={modelOptions}
               modelLoading={modelLoading}
               modelError={modelError}
               onDiscoverModels={() => void handleDiscoverModels()}
             />
+          ) : null}
+
+          {section === "connection" ? (
+            <>
+              <Divider />
+              <NetworkProxySection
+                desktop={desktop}
+                draft={proxy.draft}
+                loading={proxy.loading}
+                saving={saving}
+                error={proxy.error}
+                onChange={proxy.update}
+                onRetry={proxy.retry}
+              />
+            </>
           ) : null}
 
         </Form>
@@ -439,13 +475,14 @@ export default function SettingsDrawer({
               连接配置
             </Typography.Title>
             <Typography.Paragraph type="secondary" {...stylex.props(styles.sectionCopy)}>
-              清除 API 基础地址与 API Key，并恢复画面比例和质量默认值。默认模型为 {IMAGE_MODEL}，创作记录不受影响。
+              清除 API 基础地址与 API Key，并恢复画面比例和质量默认值。默认模型为 {IMAGE_MODEL}，创作记录与网络代理设置不受影响。
             </Typography.Paragraph>
           </div>
           <Button
             icon={<RotateCcw size={16} />}
             className={stylex.props(styles.warningButton).className}
             onClick={confirmReset}
+            disabled={saving}
           >
             清除连接配置
           </Button>

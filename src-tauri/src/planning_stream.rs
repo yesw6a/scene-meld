@@ -174,7 +174,7 @@ fn emit(
 
 fn network_error(endpoint: &str) -> CommandError {
     CommandError::new(
-        format!("无法连接目标 API（{}）。", endpoint),
+        format!("无法连接目标 API（{}），请检查网络与代理设置。", endpoint),
         "NETWORK_ERROR",
     )
 }

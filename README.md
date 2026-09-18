@@ -48,6 +48,18 @@ configuration. The current desktop build matrix covers Windows x64, macOS
 Intel, macOS Apple Silicon, and Linux x64. Run manual smoke tests on all three
 operating system families before a public release.
 
+### Desktop network proxy
+
+Open **Connection settings → Network proxy**, choose **Use system proxy** (default), **No proxy**, or **Manual proxy configuration**, then save. Proxy settings can be saved without an API key.
+
+- System mode reads Windows/macOS static system proxies and proxy environment variables. Linux uses `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY`. Environment variables may override system settings. PAC scripts and automatic discovery are not supported; use manual configuration on PAC-only networks.
+- No proxy explicitly disables system and environment proxies.
+- Manual mode accepts HTTP, HTTPS, SOCKS5, and SOCKS5H addresses, such as `http://127.0.0.1:7890`. SOCKS addresses require a port; `socks5://` resolves destination names locally, while `socks5h://` resolves them through the proxy. Manual proxy authentication is not supported; credentials, paths, query strings, and fragments are rejected.
+
+The policy covers desktop image generation, AI assistance, model discovery, generated image downloads, update checks, and update downloads. New operations use saved changes; running requests and their image downloads keep the original configuration. Manual proxy failures never fall back to direct connections. The gh-proxy update mirror follows the same network proxy policy.
+
+Settings are stored separately in `network-proxy.json` in the application configuration directory and survive clearing API connection settings. Web users must configure their browser or operating system instead. Keep the actual service URL as the API Endpoint; TLS verification remains enabled.
+
 ## Features
 
 - Multi-conversation image creation workspace

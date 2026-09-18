@@ -2,6 +2,7 @@ use serde_json::json;
 use tauri::ipc::Channel;
 
 use crate::{
+    network::ProxySettings,
     http::{authenticated_client, build_endpoint},
     planning_stream::{request_content, PlanningProgressEvent, PlanningRequest},
     types::{CommandError, ConversationResponse, ImagePromptPlanningRequest},
@@ -12,6 +13,7 @@ const PLANNER_SYSTEM_PROMPT: &str = "你是图像生成规划器。把用户创�
 pub async fn plan_image_prompts(
     request: &ImagePromptPlanningRequest,
     on_event: &Channel<PlanningProgressEvent>,
+    proxy: &ProxySettings,
 ) -> Result<ConversationResponse, CommandError> {
     validate_request(request)?;
 
@@ -42,7 +44,7 @@ pub async fn plan_image_prompts(
         body["response_format"] = json!({ "type": "json_object" });
     }
 
-    let client = authenticated_client()?;
+    let client = authenticated_client(proxy)?;
     let content = request_content(PlanningRequest {
         client: &client,
         endpoint: endpoint.as_str(),

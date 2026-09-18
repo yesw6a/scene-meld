@@ -4,6 +4,7 @@ use tauri::{ipc::Channel, AppHandle, State};
 use tauri_plugin_updater::{Error, Update, UpdaterExt};
 use tokio::sync::Mutex;
 use url::Url;
+use crate::network::NetworkState;
 
 const ENDPOINT: &str = "https://github.com/yesw6a/scene-meld/releases/latest/download/latest.json";
 const PROXY: &str = "https://gh-proxy.com/";
@@ -128,8 +129,10 @@ mod tests {
 pub async fn check_desktop_update(
     app: AppHandle,
     state: State<'_, UpdateState>,
+    network: State<'_, NetworkState>,
     on_event: Channel<UpdateEvent>,
 ) -> Result<CheckResult, String> {
+    let proxy = network.snapshot().map_err(|error| error.message)?;
     let mut pending = state
         .0
         .try_lock()
@@ -143,8 +146,8 @@ pub async fn check_desktop_update(
         } else {
             ENDPOINT.into()
         };
-        let updater = app
-            .updater_builder()
+        let updater = proxy.updater_builder(app.updater_builder())
+            .map_err(|error| error.message)?
             .endpoints(vec![Url::parse(&endpoint).map_err(|e| e.to_string())?])
             .map_err(|e| e.to_string())?
             .timeout(Duration::from_secs(10))
@@ -169,7 +172,7 @@ pub async fn check_desktop_update(
         }
     }
     Err(format!(
-        "GitHub 和 gh-proxy 均无法检查更新，请稍后重试。{}",
+        "GitHub 和 gh-proxy 均无法检查更新，请检查网络与代理设置后重试。{}",
         failures.join("；")
     ))
 }
@@ -206,14 +209,17 @@ async fn download(
 #[tauri::command]
 pub async fn install_desktop_update(
     state: State<'_, UpdateState>,
+    network: State<'_, NetworkState>,
     on_event: Channel<UpdateEvent>,
 ) -> Result<(), String> {
+    let proxy = network.snapshot().map_err(|error| error.message)?;
     let mut pending = state
         .0
         .try_lock()
         .map_err(|_| "更新操作正在进行，请稍后重试。")?;
     let selected = pending.take().ok_or("请先检查并确认可用更新。")?;
     let mut update = selected.update;
+    proxy.apply_to_update(&mut update).map_err(|error| error.message)?;
     validate_asset(&update.download_url, &update.version)?;
     let direct_url = update.download_url.clone();
     let mut source = selected.source;
